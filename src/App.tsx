@@ -1,218 +1,190 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from 'convex/react'
-import { projectsList, agentsList, activitiesFeed } from './convex'
-import PasswordGate from './components/PasswordGate'
-import Sidebar from './components/Sidebar'
-import ProjectView from './components/ProjectView'
-import ActivityFeed from './components/ActivityFeed'
-import AgentsOverview from './components/AgentsOverview'
+import { api } from './convex'
+import { Link, Route, Switch, useLocation } from 'wouter'
+import { 
+  LayoutDashboard, 
+  CheckSquare, 
+  Users, 
+  FolderOpen, 
+  Terminal, 
+  Rocket, 
+  Settings,
+  Menu,
+  X
+} from 'lucide-react'
 
-type View = 'overview' | 'project' | 'activity' | 'agents'
-
-function Dashboard() {
-  const [view, setView] = useState<View>('overview')
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
-
-  const projects = useQuery(projectsList, { status: "active" })
-  const agents = useQuery(agentsList, {})
-  const activities = useQuery(activitiesFeed, { limit: 50 })
-
-  const handleSelectProject = (id: string) => {
-    setSelectedProjectId(id)
-    setView('project')
-  }
-
-  return (
-    <div className="flex h-screen">
-      <Sidebar
-        projects={projects}
-        agents={agents}
-        currentView={view}
-        selectedProjectId={selectedProjectId}
-        onSelectView={setView}
-        onSelectProject={handleSelectProject}
-      />
-      <main className="flex-1 overflow-auto" style={{ background: 'var(--bg-primary)' }}>
-        {view === 'overview' && (
-          <Overview
-            projects={projects}
-            agents={agents}
-            activities={activities}
-            onSelectProject={handleSelectProject}
-          />
-        )}
-        {view === 'project' && selectedProjectId && (
-          <ProjectView projectId={selectedProjectId} allAgents={agents} />
-        )}
-        {view === 'activity' && <ActivityFeed activities={activities} agents={agents} />}
-        {view === 'agents' && <AgentsOverview agents={agents} projects={projects} />}
-      </main>
-    </div>
-  )
-}
-
-function Overview({
-  projects,
-  agents,
-  activities,
-  onSelectProject,
-}: {
-  projects: any[] | undefined
-  agents: any[] | undefined
-  activities: any[] | undefined
-  onSelectProject: (id: string) => void
-}) {
-  return (
-    <div className="p-8 max-w-6xl mx-auto">
-      <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
-        Mission Control
-      </h1>
-      <p className="mb-8" style={{ color: 'var(--text-secondary)' }}>
-        {agents?.length || 0} agents across {projects?.length || 0} projects
-      </p>
-
-      {/* Project Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-        {projects?.map((project: any) => {
-          const projectAgents = agents?.filter((a: any) => a.projectId === project._id) || []
-          return (
-            <div
-              key={project._id}
-              onClick={() => onSelectProject(project._id)}
-              className="rounded-lg p-5 cursor-pointer transition-all duration-200 hover:translate-y-[-2px]"
-              style={{
-                background: 'var(--bg-secondary)',
-                border: '1px solid var(--border)',
-              }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent-blue)')}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold">{project.name}</h3>
-                <StatusBadge status={project.status} />
-              </div>
-              <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
-                {project.description}
-              </p>
-              <div className="flex gap-2">
-                {projectAgents.map((agent: any) => (
-                  <span
-                    key={agent._id}
-                    className="text-xs px-2 py-1 rounded-full"
-                    style={{ background: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}
-                  >
-                    {agent.emoji || '🤖'} {agent.name}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )
-        })}
-        {projects?.length === 0 && (
-          <div className="col-span-2 text-center py-12" style={{ color: 'var(--text-muted)' }}>
-            No active projects. Spin up a swarm to get started.
-          </div>
-        )}
-      </div>
-
-      {/* Recent Activity */}
-      <h2 className="text-lg font-semibold mb-4">Recent Activity</h2>
-      <div className="space-y-2">
-        {activities?.slice(0, 10).map((activity: any) => (
-          <ActivityItem key={activity._id} activity={activity} agents={agents} />
-        ))}
-        {(!activities || activities.length === 0) && (
-          <p style={{ color: 'var(--text-muted)' }}>No activity yet.</p>
-        )}
-      </div>
-    </div>
-  )
-}
-
-export function StatusBadge({ status }: { status: string }) {
-  const colors: Record<string, { bg: string; text: string }> = {
-    active: { bg: 'rgba(63, 185, 80, 0.15)', text: 'var(--accent-green)' },
-    paused: { bg: 'rgba(210, 153, 34, 0.15)', text: 'var(--accent-yellow)' },
-    complete: { bg: 'rgba(88, 166, 255, 0.15)', text: 'var(--accent-blue)' },
-    archived: { bg: 'rgba(139, 148, 158, 0.15)', text: 'var(--text-secondary)' },
-    idle: { bg: 'rgba(139, 148, 158, 0.15)', text: 'var(--text-secondary)' },
-    blocked: { bg: 'rgba(248, 81, 73, 0.15)', text: 'var(--accent-red)' },
-    inbox: { bg: 'rgba(139, 148, 158, 0.15)', text: 'var(--text-secondary)' },
-    assigned: { bg: 'rgba(188, 140, 255, 0.15)', text: 'var(--accent-purple)' },
-    in_progress: { bg: 'rgba(88, 166, 255, 0.15)', text: 'var(--accent-blue)' },
-    review: { bg: 'rgba(210, 153, 34, 0.15)', text: 'var(--accent-yellow)' },
-    done: { bg: 'rgba(63, 185, 80, 0.15)', text: 'var(--accent-green)' },
-    high: { bg: 'rgba(248, 81, 73, 0.15)', text: 'var(--accent-red)' },
-    medium: { bg: 'rgba(210, 153, 34, 0.15)', text: 'var(--accent-yellow)' },
-    low: { bg: 'rgba(139, 148, 158, 0.15)', text: 'var(--text-secondary)' },
-  }
-  const c = colors[status] || colors.idle
-  return (
-    <span
-      className="text-xs px-2 py-0.5 rounded-full font-medium"
-      style={{ background: c.bg, color: c.text }}
-    >
-      {status.replace('_', ' ')}
-    </span>
-  )
-}
-
-export function ActivityItem({ activity, agents }: { activity: any; agents: any[] | undefined }) {
-  const agent = agents?.find((a: any) => a._id === activity.agentId)
-  const timeAgo = getTimeAgo(activity.createdAt)
-
-  const iconMap: Record<string, string> = {
-    task_created: '📋',
-    task_updated: '✏️',
-    task_assigned: '👤',
-    message_sent: '💬',
-    document_created: '📄',
-    agent_status_changed: '🔄',
-    project_created: '🚀',
-    swarm_created: '🐝',
-    swarm_dissolved: '💨',
-  }
-
-  return (
-    <div
-      className="flex items-start gap-3 px-4 py-3 rounded-lg"
-      style={{ background: 'var(--bg-secondary)' }}
-    >
-      <span className="text-lg">{iconMap[activity.type] || '📌'}</span>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm">
-          {agent && (
-            <span className="font-medium" style={{ color: 'var(--accent-blue)' }}>
-              {agent.emoji} {agent.name}
-            </span>
-          )}{' '}
-          <span style={{ color: 'var(--text-secondary)' }}>{activity.message}</span>
-        </p>
-      </div>
-      <span className="text-xs whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>
-        {timeAgo}
-      </span>
-    </div>
-  )
-}
-
-export function getTimeAgo(timestamp: number): string {
-  const diff = Date.now() - timestamp
-  const minutes = Math.floor(diff / 60000)
-  const hours = Math.floor(diff / 3600000)
-  const days = Math.floor(diff / 86400000)
-
-  if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes}m ago`
-  if (hours < 24) return `${hours}h ago`
-  if (days < 7) return `${days}d ago`
-  return new Date(timestamp).toLocaleDateString()
-}
+// Components
+import { AgentDetail } from './components/AgentDetail'
+import { Layout } from './components/Layout'
+import { Overview } from './components/Overview'
+import { TasksPage } from './components/TasksPage'
+import { AgentsList } from './components/AgentsList'
+import { FilesPage } from './components/FilesPage'
+import { LogsPage } from './components/LogsPage'
+import { SettingsPage } from './components/SettingsPage'
+import { NotFound } from './components/NotFound'
+import { TimelinePage } from './components/TimelinePage'
 
 export default function App() {
+  const [location, setLocation] = useLocation()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  
+  // Real Data
+  const agents = useQuery(api.agents.list as any) || []
+  const activities = useQuery(api.activities.feed as any) || []
+  const tasks = useQuery(api.tasks.list as any) || []
+
+  // Augmented Agent Data
+  const augmentedAgents = agents.map((agent: any) => ({
+    ...agent,
+    task: agent.status === 'busy' ? 'Processing task...' : (agent.status === 'idle' ? 'Awaiting instructions' : 'Offline'),
+    cpu: Math.floor(Math.random() * 30) + 10,
+    memory: Math.floor(Math.random() * 200) + 100,
+    version: 'v1.0.0'
+  }))
+
+  const navItems = [
+    { label: 'Overview', path: '/', icon: LayoutDashboard },
+    { label: 'Tasks', path: '/tasks', icon: CheckSquare },
+    { label: 'Timeline', path: '/timeline', icon: Terminal },
+    { label: 'Agents', path: '/agents', icon: Users },
+    { label: 'Files', path: '/files', icon: FolderOpen },
+    { label: 'Logs', path: '/logs', icon: Terminal },
+    { label: 'Settings', path: '/settings', icon: Settings }
+  ]
+
   return (
-    <PasswordGate>
-      <Dashboard />
-    </PasswordGate>
+    <div className="flex h-screen bg-neutral-950 text-neutral-300 font-sans selection:bg-indigo-500/30 overflow-hidden">
+      
+      {/* MOBILE OVERLAY */}
+      {sidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden backdrop-blur-sm" 
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* SIDEBAR */}
+      <aside className={`
+        fixed inset-y-0 left-0 z-50 w-64 bg-neutral-900 border-r border-neutral-900 flex flex-col transition-transform duration-300 ease-in-out
+        lg:static lg:translate-x-0 lg:w-64 lg:bg-neutral-900/30
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+      `}>
+        <div className="h-14 flex items-center justify-between px-6 border-b border-neutral-900">
+          <div className="flex items-center">
+            <div className="w-6 h-6 bg-indigo-600 rounded flex items-center justify-center text-white font-bold text-xs">MC</div>
+            <span className="ml-3 font-bold text-neutral-100 tracking-tight">OpenClaw</span>
+          </div>
+          <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-neutral-500">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        
+        <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
+          {navItems.map((item) => {
+            const isActive = location === item.path || (item.path !== '/' && location.startsWith(item.path))
+            const Icon = item.icon
+            return (
+              <Link 
+                key={item.label}
+                href={item.path}
+                onClick={() => setSidebarOpen(false)}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors cursor-pointer ${
+                  isActive
+                    ? 'bg-neutral-800 text-white font-medium' 
+                    : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                <span>{item.label}</span>
+              </Link>
+            )
+          })}
+        </nav>
+
+        <div className="p-4 border-t border-neutral-900">
+          <div className="text-xs font-mono text-neutral-600 mb-2">SYSTEM STATUS</div>
+          <div className="flex items-center gap-2 text-xs text-emerald-500">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            Operational
+          </div>
+        </div>
+      </aside>
+
+      {/* MAIN CONTENT */}
+      <div className="flex-1 flex flex-col min-w-0 bg-neutral-950">
+        
+        {/* MOBILE HEADER */}
+        <div className="lg:hidden h-14 border-b border-neutral-900 flex items-center px-4 bg-neutral-900/50 backdrop-blur shrink-0 justify-between">
+           <div className="flex items-center gap-3">
+             <button onClick={() => setSidebarOpen(true)} className="text-neutral-400 hover:text-white">
+               <Menu className="w-5 h-5" />
+             </button>
+             <span className="font-bold text-neutral-100">Mission Control</span>
+           </div>
+           <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+        </div>
+
+        <Switch>
+          <Route path="/agents/:id">
+            {(params: { id: string }) => {
+               const agent = augmentedAgents.find((a: any) => a._id === params.id)
+               if (!agent) return <div className="p-6">Agent not found</div>
+               return <AgentDetail agent={agent} onBack={() => setLocation('/agents')} />
+            }}
+          </Route>
+          
+          <Route path="/">
+             <Layout>
+                <Overview agents={agents} augmentedAgents={augmentedAgents} tasks={tasks} activities={activities} />
+             </Layout>
+          </Route>
+
+          <Route path="/tasks">
+             <Layout>
+                <TasksPage tasks={tasks} agents={agents} />
+             </Layout>
+          </Route>
+
+          <Route path="/timeline">
+             <Layout>
+                <TimelinePage />
+             </Layout>
+          </Route>
+
+          <Route path="/agents">
+             <Layout>
+                <AgentsList augmentedAgents={augmentedAgents} />
+             </Layout>
+          </Route>
+
+          <Route path="/files">
+             <Layout>
+                <FilesPage />
+             </Layout>
+          </Route>
+
+          <Route path="/logs">
+             <Layout>
+                <LogsPage />
+             </Layout>
+          </Route>
+
+          <Route path="/settings">
+             <Layout>
+                <SettingsPage />
+             </Layout>
+          </Route>
+
+          {/* Catch-all for 404s */}
+          <Route path="/:rest*">
+             <Layout>
+                <NotFound />
+             </Layout>
+          </Route>
+        </Switch>
+      </div>
+    </div>
   )
 }

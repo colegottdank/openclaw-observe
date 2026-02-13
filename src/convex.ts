@@ -1,24 +1,28 @@
-import { makeFunctionReference } from "convex/server";
+// This file helps the frontend connect to the backend functions without the full generated API types.
+// We use "any" casting to satisfy TypeScript for useQuery.
 
-// Projects
-export const projectsList = makeFunctionReference<"query">("projects:list");
-export const projectsGet = makeFunctionReference<"query">("projects:get");
-export const projectsGetWithSwarm = makeFunctionReference<"query">("projects:getWithSwarm");
-
-// Agents
-export const agentsList = makeFunctionReference<"query">("agents:list");
-export const agentsGetByProject = makeFunctionReference<"query">("agents:getByProject");
-
-// Tasks
-export const tasksList = makeFunctionReference<"query">("tasks:list");
-export const tasksGet = makeFunctionReference<"query">("tasks:get");
-export const tasksGetByAssignee = makeFunctionReference<"query">("tasks:getByAssignee");
-
-// Activities
-export const activitiesFeed = makeFunctionReference<"query">("activities:feed");
-
-// Messages
-export const messagesGetByTask = makeFunctionReference<"query">("messages:getByTask");
-
-// Notifications
-export const notificationsList = makeFunctionReference<"query">("notifications:list");
+export const api = {
+  agents: {
+    list: "agents:list",
+    getByProject: "agents:getByProject",
+  },
+  tasks: {
+    list: "tasks:list",
+    get: "tasks:get",
+    getByAssignee: "tasks:getByAssignee",
+  },
+  activities: {
+    feed: "activities:feed",
+  },
+  projects: {
+    list: "projects:list",
+    get: "projects:get",
+  },
+  telemetry: {
+    getRecent: "telemetry:getRecent",
+    getSystemHealth: "telemetry:getSystemHealth",
+  },
+  events: {
+    list: "events:list",
+  }
+};
