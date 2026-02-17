@@ -12,19 +12,19 @@ export function AgentCard({ agent }: AgentCardProps) {
 
   const handleFilesClick = (e: React.MouseEvent) => {
     e.stopPropagation()
-    setLocation(`/agents/${agent._id}?tab=files`)
+    setLocation(`/agents/${agent.id}?tab=files`)
   }
 
   const handleSessionsClick = (e: React.MouseEvent) => {
     e.stopPropagation()
-    setLocation(`/agents/${agent._id}?tab=sessions`)
+    setLocation(`/agents/${agent.id}?tab=sessions`)
   }
 
   const style = STATUS_STYLES[agent.status] || STATUS_STYLES.offline
 
   return (
     <div
-      onClick={() => setLocation(`/agents/${agent._id}`)}
+      onClick={() => setLocation(`/agents/${agent.id}`)}
       className="group relative bg-neutral-900 border border-neutral-800 hover:border-indigo-500/50 p-4 rounded-lg transition-all hover:shadow-[0_0_15px_rgba(99,102,241,0.1)] cursor-pointer flex flex-col h-full"
     >
       <div className="flex justify-between items-start mb-3">

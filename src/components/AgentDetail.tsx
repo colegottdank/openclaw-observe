@@ -19,9 +19,9 @@ export function AgentDetail({ agent, onBack }: AgentDetailProps) {
 
   const [activeTab, setActiveTab] = useState<'overview' | 'files' | 'sessions'>(initialTab as 'overview' | 'files' | 'sessions')
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
-  const [filePath, setFilePath] = useState(agent.workspace || agent._id)
+  const [filePath, setFilePath] = useState(agent.workspace || agent.id)
 
-  const agentId = agent._id
+  const agentId = agent.id
   // Always fetch sessions so overview can show stats
   const { data: sessions, loading: loadingSessions, error: sessionsError } = useSessions(agentId)
   const selectedSessionStatus = sessions?.find(s => s.sessionId === selectedSessionId)?.status || null
@@ -75,7 +75,7 @@ export function AgentDetail({ agent, onBack }: AgentDetailProps) {
             <div>
               <h1 className="text-lg font-bold text-white leading-none">{agent.name}</h1>
               <div className="flex items-center gap-2 text-xs font-mono text-neutral-500 mt-1">
-                <span>{selectedSessionId ? `Session: ${selectedSessionId.slice(0, 12)}...` : agent._id}</span>
+                <span>{selectedSessionId ? `Session: ${selectedSessionId.slice(0, 12)}...` : agent.id}</span>
               </div>
             </div>
           </div>
@@ -151,7 +151,7 @@ export function AgentDetail({ agent, onBack }: AgentDetailProps) {
                   <div className="space-y-3 text-sm">
                     <div className="flex justify-between">
                       <span className="text-neutral-500">Agent ID</span>
-                      <span className="font-mono text-neutral-300">{agent._id}</span>
+                      <span className="font-mono text-neutral-300">{agent.id}</span>
                     </div>
                     {agent.role && (
                       <div className="flex justify-between">

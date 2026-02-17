@@ -18,7 +18,7 @@ export function getAgentColor(agentId: string): string {
  */
 export function getAgentName(agentOrId: Agent | string): string {
   if (typeof agentOrId === 'object') {
-    return agentOrId.displayName || agentOrId.name || agentOrId._id
+    return agentOrId.displayName || agentOrId.name || agentOrId.id
   }
   return agentOrId
     .replace(/^agent:/, '')

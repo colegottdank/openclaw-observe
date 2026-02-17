@@ -209,7 +209,7 @@ export default function App() {
 				<Switch>
 					<Route path="/agents/:id">
 						{(params: { id: string }) => {
-							const agent = agents?.find(a => a._id === params.id)
+							const agent = agents?.find(a => a.id === params.id)
 							if (!agents) return <div className="flex-1 flex items-center justify-center text-neutral-500">Loading...</div>
 							if (!agent) return <div className="p-6">Agent not found</div>
 							return <AgentDetail agent={agent} onBack={() => setLocation('/agents')} />

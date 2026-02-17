@@ -1,7 +1,7 @@
 export type AgentStatus = 'active' | 'idle' | 'busy' | 'blocked' | 'paused' | 'error'
 
 export interface Agent {
-  _id: string
+  id: string
   name: string
   status: AgentStatus
   role?: string

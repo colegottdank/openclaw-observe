@@ -1,6 +1,19 @@
 node_modules/
-*.log
-backend.log
-frontend.log
 dist/
+*.log
 .env
+
+# OpenClaw agent context files (not part of the app)
+IDENTITY.md
+SOUL.md
+BOOTSTRAP.md
+HEARTBEAT.md
+AGENTS.md
+TOOLS.md
+USER.md
+SETTINGS_PRD.md
+EOF
+
+# Dev scripts
+restart.sh
+preview.png

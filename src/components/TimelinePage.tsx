@@ -43,7 +43,7 @@ export function TimelinePage() {
   }, [])
 
   const agentRows = useMemo(() => {
-    const knownIds = (agents || []).map(a => a._id)
+    const knownIds = (agents || []).map(a => a.id)
     const seen = new Set(knownIds)
 
     if (data?.activities) {

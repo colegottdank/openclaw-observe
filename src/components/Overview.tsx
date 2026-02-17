@@ -41,7 +41,7 @@ export function Overview() {
           <div className="p-4 overflow-y-auto scrollbar-thin">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {agentList.map(agent => (
-                <AgentCard key={agent._id} agent={agent} />
+                <AgentCard key={agent.id} agent={agent} />
               ))}
             </div>
           </div>
