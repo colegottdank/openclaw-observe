@@ -103,16 +103,6 @@ export function FileBrowser({ currentPath, onNavigate, className = '' }: FileBro
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [saveFile, selectedFile])
 
-  const goUp = () => {
-      // Handle root
-      if (currentPath === '/' || currentPath === '') return
-      
-      const parts = currentPath.split('/').filter(p => p) // Remove empty strings
-      parts.pop()
-      const newPath = parts.length === 0 ? '/' : parts.join('/')
-      onNavigate(newPath)
-  }
-
   // Generate breadcrumbs
   const breadcrumbs = currentPath.split('/').filter(Boolean).reduce((acc, part, index, arr) => {
       const path = '/' + arr.slice(0, index + 1).join('/')

@@ -1,190 +1,254 @@
 import { useState, useEffect } from 'react'
-import { useQuery } from 'convex/react'
-import { api } from './convex'
 import { Link, Route, Switch, useLocation } from 'wouter'
-import { 
-  LayoutDashboard, 
-  CheckSquare, 
-  Users, 
-  FolderOpen, 
-  Terminal, 
-  Rocket, 
-  Settings,
-  Menu,
-  X
+import {
+	LayoutDashboard,
+	Users,
+	FolderOpen,
+	Terminal,
+	Settings,
+	Menu,
+	X,
+	Clock,
+	ScrollText,
+	ChevronsLeft,
 } from 'lucide-react'
 
 // Components
 import { AgentDetail } from './components/AgentDetail'
 import { Layout } from './components/Layout'
 import { Overview } from './components/Overview'
-import { TasksPage } from './components/TasksPage'
 import { AgentsList } from './components/AgentsList'
 import { FilesPage } from './components/FilesPage'
 import { LogsPage } from './components/LogsPage'
 import { SettingsPage } from './components/SettingsPage'
 import { NotFound } from './components/NotFound'
 import { TimelinePage } from './components/TimelinePage'
+import { SessionsPage } from './components/SessionsPage'
+import { useAgents, useGatewayStatus } from './hooks'
+import { ErrorBoundary } from './components/ui'
+
+const NAV_ITEMS = [
+	{ label: 'Overview', path: '/', icon: LayoutDashboard },
+	{ label: 'Timeline', path: '/timeline', icon: Clock },
+	{ label: 'Sessions', path: '/sessions', icon: ScrollText },
+	{ label: 'Agents', path: '/agents', icon: Users },
+	{ label: 'Files', path: '/files', icon: FolderOpen },
+	{ label: 'Logs', path: '/logs', icon: Terminal },
+	{ label: 'Settings', path: '/settings', icon: Settings },
+]
 
 export default function App() {
-  const [location, setLocation] = useLocation()
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-  
-  // Real Data
-  const agents = useQuery(api.agents.list as any) || []
-  const activities = useQuery(api.activities.feed as any) || []
-  const tasks = useQuery(api.tasks.list as any) || []
+	const [location, setLocation] = useLocation()
+	const [sidebarOpen, setSidebarOpen] = useState(false)
+	const [collapsed, setCollapsed] = useState(() => localStorage.getItem('oc-sidebar-collapsed') === 'true')
+	const [mounted, setMounted] = useState(false)
 
-  // Augmented Agent Data
-  const augmentedAgents = agents.map((agent: any) => ({
-    ...agent,
-    task: agent.status === 'busy' ? 'Processing task...' : (agent.status === 'idle' ? 'Awaiting instructions' : 'Offline'),
-    cpu: Math.floor(Math.random() * 30) + 10,
-    memory: Math.floor(Math.random() * 200) + 100,
-    version: 'v1.0.0'
-  }))
+	useEffect(() => {
+		setMounted(true)
+	}, [])
 
-  const navItems = [
-    { label: 'Overview', path: '/', icon: LayoutDashboard },
-    { label: 'Tasks', path: '/tasks', icon: CheckSquare },
-    { label: 'Timeline', path: '/timeline', icon: Terminal },
-    { label: 'Agents', path: '/agents', icon: Users },
-    { label: 'Files', path: '/files', icon: FolderOpen },
-    { label: 'Logs', path: '/logs', icon: Terminal },
-    { label: 'Settings', path: '/settings', icon: Settings }
-  ]
+	const toggleCollapsed = () => {
+		setCollapsed(prev => {
+			localStorage.setItem('oc-sidebar-collapsed', String(!prev))
+			return !prev
+		})
+	}
 
-  return (
-    <div className="flex h-screen bg-neutral-950 text-neutral-300 font-sans selection:bg-indigo-500/30 overflow-hidden">
-      
-      {/* MOBILE OVERLAY */}
-      {sidebarOpen && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden backdrop-blur-sm" 
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+	// Only needed for agent detail route lookup
+	const { data: agents } = useAgents()
+	const { data: gatewayStatus } = useGatewayStatus()
+	const isOnline = gatewayStatus?.status === 'online'
+	const statusLabel = gatewayStatus ? (isOnline ? 'Operational' : 'Offline') : 'Checking...'
+	const statusColor = gatewayStatus ? (isOnline ? 'bg-emerald-500' : 'bg-red-500') : 'bg-neutral-500'
+	const statusTextColor = gatewayStatus ? (isOnline ? 'text-emerald-500' : 'text-red-500') : 'text-neutral-500'
 
-      {/* SIDEBAR */}
-      <aside className={`
-        fixed inset-y-0 left-0 z-50 w-64 bg-neutral-900 border-r border-neutral-900 flex flex-col transition-transform duration-300 ease-in-out
-        lg:static lg:translate-x-0 lg:w-64 lg:bg-neutral-900/30
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-      `}>
-        <div className="h-14 flex items-center justify-between px-6 border-b border-neutral-900">
-          <div className="flex items-center">
-            <div className="w-6 h-6 bg-indigo-600 rounded flex items-center justify-center text-white font-bold text-xs">MC</div>
-            <span className="ml-3 font-bold text-neutral-100 tracking-tight">OpenClaw</span>
-          </div>
-          <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-neutral-500">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        
-        <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
-          {navItems.map((item) => {
-            const isActive = location === item.path || (item.path !== '/' && location.startsWith(item.path))
-            const Icon = item.icon
-            return (
-              <Link 
-                key={item.label}
-                href={item.path}
-                onClick={() => setSidebarOpen(false)}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors cursor-pointer ${
-                  isActive
-                    ? 'bg-neutral-800 text-white font-medium' 
-                    : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900'
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                <span>{item.label}</span>
-              </Link>
-            )
-          })}
-        </nav>
+	return (
+		<div className="flex h-[100dvh] bg-neutral-950 text-neutral-300 font-sans selection:bg-indigo-500/30 overflow-hidden">
 
-        <div className="p-4 border-t border-neutral-900">
-          <div className="text-xs font-mono text-neutral-600 mb-2">SYSTEM STATUS</div>
-          <div className="flex items-center gap-2 text-xs text-emerald-500">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            Operational
-          </div>
-        </div>
-      </aside>
+			{/* MOBILE OVERLAY */}
+			{sidebarOpen && (
+				<div
+					className="fixed inset-0 bg-black/60 z-40 lg:hidden backdrop-blur-sm transition-opacity duration-200"
+					onClick={() => setSidebarOpen(false)}
+				/>
+			)}
 
-      {/* MAIN CONTENT */}
-      <div className="flex-1 flex flex-col min-w-0 bg-neutral-950">
-        
-        {/* MOBILE HEADER */}
-        <div className="lg:hidden h-14 border-b border-neutral-900 flex items-center px-4 bg-neutral-900/50 backdrop-blur shrink-0 justify-between">
-           <div className="flex items-center gap-3">
-             <button onClick={() => setSidebarOpen(true)} className="text-neutral-400 hover:text-white">
-               <Menu className="w-5 h-5" />
-             </button>
-             <span className="font-bold text-neutral-100">Mission Control</span>
-           </div>
-           <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-        </div>
+			{/* SIDEBAR */}
+			<aside
+				className={`
+					fixed inset-y-0 left-0 z-50 bg-neutral-900 border-r border-neutral-800 
+					flex flex-col transition-all duration-300 ease-out
+					lg:static lg:translate-x-0
+					${collapsed && mounted ? 'lg:w-[72px]' : 'lg:w-60'}
+					${sidebarOpen ? 'translate-x-0 w-60' : '-translate-x-full w-60'}
+				`}
+			>
+				{/* Header */}
+				<div className="h-14 flex items-center shrink-0 border-b border-neutral-800 px-3">
+					<Link href="/" className="flex items-center gap-3 overflow-hidden flex-1">
+						<img 
+							src="/logo.svg" 
+							alt="OpenClaw" 
+							className="w-8 h-8 shrink-0"
+						/>
+						<span className={`
+							font-semibold text-neutral-100 text-sm whitespace-nowrap
+							transition-all duration-300 ease-out
+							${collapsed && mounted ? 'lg:opacity-0 lg:w-0' : 'opacity-100'}
+						`}>
+							OpenClaw
+						</span>
+					</Link>
+					
+					{/* Collapse toggle - desktop only */}
+					<button
+						onClick={toggleCollapsed}
+						className={`
+							hidden lg:flex items-center justify-center w-7 h-7 rounded-md
+							text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800
+							transition-all duration-200 cursor-pointer
+						`}
+						title={collapsed ? 'Expand' : 'Collapse'}
+					>
+						<div className={`
+							transition-transform duration-300
+							${collapsed ? 'rotate-180' : ''}
+						`}>
+							<ChevronsLeft className="w-4 h-4" />
+						</div>
+					</button>
+					
+					<button 
+						onClick={() => setSidebarOpen(false)} 
+						className="lg:hidden text-neutral-500 hover:text-white p-1.5 rounded-md hover:bg-neutral-800 transition-colors"
+					>
+						<X className="w-4 h-4" />
+					</button>
+				</div>
 
-        <Switch>
-          <Route path="/agents/:id">
-            {(params: { id: string }) => {
-               const agent = augmentedAgents.find((a: any) => a._id === params.id)
-               if (!agent) return <div className="p-6">Agent not found</div>
-               return <AgentDetail agent={agent} onBack={() => setLocation('/agents')} />
-            }}
-          </Route>
-          
-          <Route path="/">
-             <Layout>
-                <Overview agents={agents} augmentedAgents={augmentedAgents} tasks={tasks} activities={activities} />
-             </Layout>
-          </Route>
+				{/* Nav */}
+				<nav className="flex-1 overflow-y-auto py-4 px-2">
+					<ul className="space-y-1">
+						{NAV_ITEMS.map(item => {
+							const isActive = location === item.path || (item.path !== '/' && location.startsWith(item.path))
+							const Icon = item.icon
+							return (
+								<li key={item.label}>
+									<Link
+										href={item.path}
+										onClick={() => setSidebarOpen(false)}
+										className={`
+											group flex items-center gap-3 rounded-md text-sm font-medium
+											transition-colors duration-150 h-10
+											${collapsed && mounted ? 'lg:justify-center lg:px-0' : 'px-3'}
+											${isActive
+												? 'bg-neutral-800 text-white'
+												: 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50'
+											}
+										`}
+									>
+										<div className={`
+											flex items-center justify-center shrink-0
+											${collapsed && mounted ? 'w-10' : 'w-5'}
+										`}>
+											<Icon 
+												className={`
+													shrink-0 transition-transform duration-150
+													${isActive ? 'text-indigo-400' : 'text-neutral-500 group-hover:text-neutral-300'}
+												`} 
+												size={collapsed && mounted ? 20 : 18} 
+											/>
+										</div>
+										
+										<span className={`
+											whitespace-nowrap transition-all duration-300 ease-out
+											${collapsed && mounted ? 'lg:opacity-0 lg:w-0 lg:hidden' : 'opacity-100'}
+										`}>
+											{item.label}
+										</span>
+									</Link>
+								</li>
+							)
+						})}
+					</ul>
+				</nav>
 
-          <Route path="/tasks">
-             <Layout>
-                <TasksPage tasks={tasks} agents={agents} />
-             </Layout>
-          </Route>
+				{/* Footer */}
+				<div className="border-t border-neutral-800 shrink-0 p-3">
+					<div className={`flex items-center gap-2 ${collapsed && mounted ? 'lg:justify-center' : ''}`}>
+						<span className={`w-2 h-2 rounded-full shrink-0 ${statusColor} ${isOnline ? 'animate-pulse' : ''}`} />
+						<span className={`
+							text-xs font-medium ${statusTextColor} whitespace-nowrap
+							transition-all duration-300 ease-out
+							${collapsed && mounted ? 'lg:opacity-0 lg:w-0 lg:hidden' : 'opacity-100'}
+						`}>
+							{statusLabel}
+						</span>
+					</div>
+				</div>
+			</aside>
 
-          <Route path="/timeline">
-             <Layout>
-                <TimelinePage />
-             </Layout>
-          </Route>
+			{/* MAIN CONTENT */}
+			<div className="flex-1 flex flex-col min-w-0 bg-neutral-950">
 
-          <Route path="/agents">
-             <Layout>
-                <AgentsList augmentedAgents={augmentedAgents} />
-             </Layout>
-          </Route>
+				{/* MOBILE HEADER */}
+				<div className="lg:hidden h-14 border-b border-neutral-800/60 flex items-center px-4 bg-neutral-900/50 backdrop-blur shrink-0 justify-between">
+					<div className="flex items-center gap-3">
+						<button 
+							onClick={() => setSidebarOpen(true)} 
+							className="text-neutral-400 hover:text-white p-1.5 -ml-1.5 rounded-md hover:bg-neutral-800/50 transition-colors"
+						>
+							<Menu className="w-5 h-5" />
+						</button>
+						<span className="font-bold text-neutral-100">OpenClaw</span>
+					</div>
+					<span className={`w-2 h-2 rounded-full ${statusColor} ${isOnline ? 'animate-pulse' : ''}`} title={statusLabel} />
+				</div>
 
-          <Route path="/files">
-             <Layout>
-                <FilesPage />
-             </Layout>
-          </Route>
+				<ErrorBoundary key={location}>
+				<Switch>
+					<Route path="/agents/:id">
+						{(params: { id: string }) => {
+							const agent = agents?.find(a => a._id === params.id)
+							if (!agents) return <div className="flex-1 flex items-center justify-center text-neutral-500">Loading...</div>
+							if (!agent) return <div className="p-6">Agent not found</div>
+							return <AgentDetail agent={agent} onBack={() => setLocation('/agents')} />
+						}}
+					</Route>
 
-          <Route path="/logs">
-             <Layout>
-                <LogsPage />
-             </Layout>
-          </Route>
+					<Route path="/">
+						<Layout><Overview /></Layout>
+					</Route>
 
-          <Route path="/settings">
-             <Layout>
-                <SettingsPage />
-             </Layout>
-          </Route>
+					<Route path="/timeline">
+						<Layout><TimelinePage /></Layout>
+					</Route>
 
-          {/* Catch-all for 404s */}
-          <Route path="/:rest*">
-             <Layout>
-                <NotFound />
-             </Layout>
-          </Route>
-        </Switch>
-      </div>
-    </div>
-  )
+					<Route path="/sessions">
+						<Layout><SessionsPage /></Layout>
+					</Route>
+
+					<Route path="/agents">
+						<Layout><AgentsList /></Layout>
+					</Route>
+					<Route path="/files">
+						<Layout><FilesPage /></Layout>
+					</Route>
+
+					<Route path="/logs">
+						<Layout><LogsPage /></Layout>
+					</Route>
+
+					<Route path="/settings">
+						<Layout><SettingsPage /></Layout>
+					</Route>
+
+					<Route path="/:rest*">
+						<Layout><NotFound /></Layout>
+					</Route>
+				</Switch>
+				</ErrorBoundary>
+			</div>
+		</div>
+	)
 }

@@ -1,17 +1,70 @@
-import { useState } from 'react'
-import { useQuery } from 'convex/react'
-import { api } from '../convex'
+import { useState, useEffect, useCallback } from 'react'
+import { Terminal, RefreshCw } from 'lucide-react'
+import { useGatewayStatus } from '../hooks'
+import { StatCard } from './ui'
+
+interface LogEntry {
+  id: string
+  timestamp: string
+  level: string
+  source: string
+  message: string
+  raw: string
+}
 
 export function LogsPage() {
-  const [filter, setFilter] = useState<'all' | 'error' | 'poller' | 'agent' | 'webhook'>('all')
-  
-  // Construct query args based on filter
-  const queryArgs: any = { limit: 100 }
-  if (filter === 'error') queryArgs.status = 'error'
-  else if (filter !== 'all') queryArgs.source = filter
+  const [logs, setLogs] = useState<LogEntry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState<'all' | 'error' | 'info' | 'warn'>('all')
 
-  const logs = useQuery(api.telemetry.getRecent as any, queryArgs) || []
-  const health = useQuery(api.telemetry.getSystemHealth as any)
+  const { data: status } = useGatewayStatus()
+
+  const fetchLogs = useCallback(async () => {
+    try {
+      const logsRes = await fetch('/api/gateway/logs?lines=200')
+      if (logsRes.ok) {
+        const data = await logsRes.json()
+        const rawLines = data.logs.split('\n').filter((l: string) => l.trim())
+
+        const parsedLogs = rawLines.map((line: string, i: number) => {
+          let level = 'info'
+          if (line.match(/error|fail|exception/i)) level = 'error'
+          else if (line.match(/warn/i)) level = 'warn'
+
+          // Parse timestamp from log line (ISO format at start)
+          const tsMatch = line.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[\d.]*[^ ]*)/)
+          const timestamp = tsMatch ? tsMatch[1] : ''
+          const message = tsMatch ? line.slice(tsMatch[0].length).trim() : line
+
+          return {
+            id: `log-${i}`,
+            timestamp,
+            level,
+            source: 'gateway',
+            message,
+            raw: line,
+          }
+        }).reverse()
+
+        setLogs(parsedLogs)
+      }
+    } catch (e) {
+      console.error('Error fetching logs:', e)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchLogs()
+    const interval = setInterval(fetchLogs, 5000)
+    return () => clearInterval(interval)
+  }, [fetchLogs])
+
+  const filteredLogs = logs.filter(log => {
+    if (filter === 'all') return true
+    return log.level === filter
+  })
 
   return (
     <div className="flex flex-col h-full bg-neutral-950 text-neutral-300">
@@ -20,17 +73,25 @@ export function LogsPage() {
         <div className="flex flex-col lg:flex-row justify-between items-start mb-6 gap-4">
           <div>
             <h1 className="text-2xl font-bold text-white mb-1">System Logs</h1>
-            <p className="text-neutral-500 text-sm">Real-time telemetry from OpenClaw infrastructure.</p>
+            <p className="text-neutral-500 text-sm">Real-time telemetry from OpenClaw gateway.</p>
           </div>
-          
-          <div className="flex gap-2 flex-wrap">
-            {['all', 'error', 'poller', 'agent', 'webhook'].map(f => (
+
+          <div className="flex gap-2">
+            <button
+              onClick={fetchLogs}
+              className="p-2 rounded-md bg-neutral-800 text-neutral-400 hover:text-white transition-colors"
+              title="Refresh"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+            <div className="h-8 w-px bg-neutral-800 mx-2" />
+            {(['all', 'error', 'warn', 'info'] as const).map(f => (
               <button
                 key={f}
-                onClick={() => setFilter(f as any)}
+                onClick={() => setFilter(f)}
                 className={`px-3 py-1.5 rounded-md text-xs font-mono uppercase tracking-wider transition-colors border ${
-                  filter === f 
-                    ? 'bg-neutral-800 text-white border-neutral-700' 
+                  filter === f
+                    ? 'bg-neutral-800 text-white border-neutral-700'
                     : 'text-neutral-500 border-transparent hover:bg-neutral-900 hover:text-neutral-300'
                 }`}
               >
@@ -40,114 +101,44 @@ export function LogsPage() {
           </div>
         </div>
 
-        {health && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-neutral-900/50 border border-neutral-800 p-4 rounded-lg">
-                    <div className="text-xs text-neutral-500 uppercase font-bold mb-1">System Status</div>
-                    <div className={`text-lg font-mono font-bold flex items-center gap-2 ${
-                        health.status === 'healthy' ? 'text-emerald-500' :
-                        health.status === 'degraded' ? 'text-amber-500' : 'text-red-500'
-                    }`}>
-                        <span className={`w-2 h-2 rounded-full ${
-                             health.status === 'healthy' ? 'bg-emerald-500' :
-                             health.status === 'degraded' ? 'bg-amber-500' : 'bg-red-500'
-                        } animate-pulse`}></span>
-                        {health.status.toUpperCase()}
-                    </div>
-                </div>
-                <div className="bg-neutral-900/50 border border-neutral-800 p-4 rounded-lg">
-                    <div className="text-xs text-neutral-500 uppercase font-bold mb-1">Error Rate (1h)</div>
-                    <div className={`text-lg font-mono font-bold ${
-                        (health.errorRateLastHour || 0) > 10 ? 'text-red-500' : 'text-white'
-                    }`}>
-                        {health.errorRateLastHour}%
-                    </div>
-                </div>
-                <div className="bg-neutral-900/50 border border-neutral-800 p-4 rounded-lg">
-                    <div className="text-xs text-neutral-500 uppercase font-bold mb-1">Stuck Actions</div>
-                    <div className={`text-lg font-mono font-bold ${
-                        (health.stuckActions || 0) > 0 ? 'text-amber-500' : 'text-white'
-                    }`}>
-                        {health.stuckActions || 0}
-                    </div>
-                </div>
-                <div className="bg-neutral-900/50 border border-neutral-800 p-4 rounded-lg">
-                    <div className="text-xs text-neutral-500 uppercase font-bold mb-1">Last Poll</div>
-                    <div className="text-lg font-mono font-bold text-white">
-                        {health.lastPollAt ? (() => {
-                            const diff = Math.floor((Date.now() - health.lastPollAt) / 1000);
-                            return `${diff}s ago`;
-                        })() : 'Never'}
-                    </div>
-                </div>
-            </div>
+        {status && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatCard
+              label="Gateway Status"
+              value={status.status?.toUpperCase() || 'UNKNOWN'}
+              color={status.status === 'online' ? 'text-emerald-500' : 'text-amber-500'}
+            />
+            <StatCard label="Version" value={status.version || 'Unknown'} />
+            <StatCard label="Memory" value={status.memoryUsage || '-'} />
+            <StatCard label="Uptime" value={status.uptime || '-'} />
+          </div>
         )}
       </div>
 
-      {/* LOGS TABLE */}
-      <div className="flex-1 overflow-auto">
-        <table className="w-full text-left text-xs font-mono border-collapse min-w-[800px]">
-            <thead className="bg-neutral-900/50 sticky top-0 z-10 border-b border-neutral-800">
-                <tr>
-                    <th className="px-4 py-3 font-medium text-neutral-500 w-32">Time</th>
-                    <th className="px-4 py-3 font-medium text-neutral-500 w-24">Source</th>
-                    <th className="px-4 py-3 font-medium text-neutral-500 w-32">Event</th>
-                    <th className="px-4 py-3 font-medium text-neutral-500 w-20">Status</th>
-                    <th className="px-4 py-3 font-medium text-neutral-500">Details</th>
-                    <th className="px-4 py-3 font-medium text-neutral-500 w-24 text-right">Duration</th>
-                </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-800/30">
-                {logs.length === 0 ? (
-                    <tr><td colSpan={6} className="p-8 text-center text-neutral-600 italic">No logs found matching filter.</td></tr>
-                ) : (
-                    logs.map((log: any) => (
-                        <tr key={log._id} className="hover:bg-neutral-900/30 transition-colors">
-                            <td className="px-4 py-2 text-neutral-500 whitespace-nowrap">
-                                {new Date(log.timestamp).toLocaleTimeString()}
-                            </td>
-                            <td className="px-4 py-2">
-                                <span className={`px-1.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider ${
-                                    log.source === 'poller' ? 'bg-blue-500/10 text-blue-400' :
-                                    log.source === 'agent' ? 'bg-purple-500/10 text-purple-400' :
-                                    log.source === 'webhook' ? 'bg-orange-500/10 text-orange-400' :
-                                    log.source === 'cron' ? 'bg-pink-500/10 text-pink-400' :
-                                    'bg-neutral-800 text-neutral-400'
-                                }`}>
-                                    {log.source}
-                                </span>
-                            </td>
-                            <td className="px-4 py-2 text-neutral-300">
-                                {log.event_type}
-                            </td>
-                            <td className="px-4 py-2">
-                                <span className={log.status === 'error' ? 'text-red-500 font-bold' : 'text-emerald-500/50'}>
-                                    {log.status === 'error' ? 'ERR' : 'OK'}
-                                </span>
-                            </td>
-                            <td className="px-4 py-2 text-neutral-400 break-all">
-                                {log.error ? (
-                                    <span className="text-red-400">{log.error}</span>
-                                ) : (
-                                    <div className="flex gap-2">
-                                        {log.agent_id && <span className="text-purple-400/70">[{log.agent_id}]</span>}
-                                        {log.task_id && <span className="text-indigo-400/70">Task: {log.task_id}</span>}
-                                        {log.metadata && (
-                                            <span className="opacity-50 truncate max-w-md">
-                                                {JSON.stringify(log.metadata)}
-                                            </span>
-                                        )}
-                                    </div>
-                                )}
-                            </td>
-                            <td className="px-4 py-2 text-right text-neutral-600">
-                                {log.duration_ms ? `${log.duration_ms}ms` : '-'}
-                            </td>
-                        </tr>
-                    ))
-                )}
-            </tbody>
-        </table>
+      {/* LOGS TERMINAL VIEW */}
+      <div className="flex-1 overflow-auto bg-black p-4 font-mono text-xs">
+        {filteredLogs.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-neutral-600 gap-2">
+            <Terminal className="w-8 h-8 opacity-20" />
+            <span>No logs found matching filter.</span>
+          </div>
+        ) : (
+          <div className="space-y-1">
+            {filteredLogs.map(log => (
+              <div key={log.id} className="flex gap-3 hover:bg-neutral-900/50 px-2 py-0.5 rounded group">
+                <span className="text-neutral-600 shrink-0 w-24 select-none opacity-50">{log.timestamp ? log.timestamp.split('T')[1]?.split(/[.+-]/)[0] : ''}</span>
+                <span className={`shrink-0 w-12 font-bold ${
+                  log.level === 'error' ? 'text-red-500' :
+                  log.level === 'warn' ? 'text-amber-500' :
+                  'text-emerald-500'
+                }`}>
+                  {log.level.toUpperCase()}
+                </span>
+                <span className="text-neutral-300 break-all">{log.message}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
