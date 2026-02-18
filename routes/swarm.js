@@ -8,8 +8,8 @@ import { ROOT_DIR, AGENTS_ROOT } from '../lib/paths.js'
 
 const router = Router()
 
-/** Read the first line of a JSONL session file to extract parentSessionId */
-async function readParentSessionId(filePath) {
+/** Read the first line of a JSONL session file to extract metadata */
+async function readSessionMeta(filePath) {
   try {
     const stream = createReadStream(filePath)
     const rl = createInterface({ input: stream, crlfDelay: Infinity })
@@ -18,14 +18,17 @@ async function readParentSessionId(filePath) {
         const entry = JSON.parse(line)
         rl.close()
         stream.destroy()
-        return entry.parentSessionId || null
+        return {
+          parentSessionId: entry.parentSessionId || null,
+          createdAt: entry.timestamp ? new Date(entry.timestamp).getTime() : null,
+        }
       } catch {}
       break
     }
     rl.close()
     stream.destroy()
   } catch {}
-  return null
+  return { parentSessionId: null, createdAt: null }
 }
 
 router.get('/api/gateway/logs', async (req, res) => {
@@ -75,9 +78,8 @@ router.get('/api/swarm/activity', async (req, res) => {
         const data = await fs.readFile(sessionsFile, 'utf-8')
         const sessions = JSON.parse(data)
         Object.entries(sessions).forEach(([key, session]) => {
-          const start = session.createdAt || session.updatedAt - 60000
           const end = session.updatedAt
-          if (end >= windowStart || start >= windowStart) {
+          if (end >= windowStart) {
             let label = session.label || 'Unknown task'
             if (label === 'Unknown task' && key.includes(':')) {
               label = key.split(':').slice(2).join(':').replace(/^(discord|channel):?/, '')
@@ -85,14 +87,20 @@ router.get('/api/swarm/activity', async (req, res) => {
             let status = 'completed'
             if (session.active || (now - end) < 60000) status = 'active'
             else if (session.abortedLastRun) status = 'aborted'
-            const activity = { agentId: agent, sessionId: session.sessionId, start, end, label, status, key, parentSessionId: null }
+            // start will be filled in from JSONL metadata; fallback to updatedAt - 60s
+            const activity = { agentId: agent, sessionId: session.sessionId, start: end - 60000, end, label, status, key, parentSessionId: null }
             activities.push(activity)
 
-            // Queue parent lookup from JSONL file
+            // Read session metadata from JSONL (createdAt + parentSessionId)
             if (session.sessionId) {
               const jsonlPath = path.join(AGENTS_ROOT, agent, 'sessions', `${session.sessionId}.jsonl`)
               parentLookups.push(
-                readParentSessionId(jsonlPath).then(pid => { activity.parentSessionId = pid })
+                readSessionMeta(jsonlPath).then(meta => {
+                  activity.parentSessionId = meta.parentSessionId
+                  if (meta.createdAt && meta.createdAt <= activity.end) {
+                    activity.start = meta.createdAt
+                  }
+                })
               )
             }
           }
