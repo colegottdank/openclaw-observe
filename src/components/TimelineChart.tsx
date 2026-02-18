@@ -1,8 +1,7 @@
-import { useMemo } from 'react'
 import { Clock, Heart, Calendar, Zap, Circle } from 'lucide-react'
 import { getAgentName, getAgentColor, getActivityType, getActivityTypeColor } from '../utils/agents'
 import { formatTime } from '../utils/time'
-import { TYPE_ICONS, TYPE_LABELS } from './TimelineTooltip'
+import { TYPE_ICONS } from './TimelineTooltip'
 import type { SwarmActivity } from '../types'
 
 interface TimelineChartProps {
@@ -98,7 +97,7 @@ export function TimelineChart({
           </div>
           <div className="flex-1 relative h-10">
             {timeGridLines.map((time, i) => {
-              const isLast = i === timeGridLines.length - 1
+              const isNow = i === timeGridLines.length - 1
               const leftPercent = ((time - timeRange.start) / timeRange.duration) * 100
               return (
                 <div
@@ -106,8 +105,8 @@ export function TimelineChart({
                   className="absolute top-0 bottom-0 border-l border-neutral-800/50 flex items-center"
                   style={{ left: `${leftPercent}%` }}
                 >
-                  <span className={`text-[10px] ml-1 ${isLast ? 'text-emerald-400 font-medium' : 'text-neutral-600'}`}>
-                    {isLast ? 'Now' : formatTime(time)}
+                  <span className={`text-[10px] ml-1 ${isNow ? 'text-emerald-400 font-medium' : 'text-neutral-600'}`}>
+                    {isNow ? 'Now' : formatTime(time)}
                   </span>
                 </div>
               )

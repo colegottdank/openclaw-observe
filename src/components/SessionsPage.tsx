@@ -3,7 +3,7 @@ import { ScrollText, Bot, X, Search } from 'lucide-react'
 import { usePolling } from '../hooks/usePolling'
 import { useSessionLogs } from '../hooks'
 import { SessionTraceViewer } from './SessionTraceViewer'
-import { ResizablePanel, StatusDot, StatusBadge } from './ui'
+import { ResizablePanel, StatusDot, StatusBadge, SimpleSelect } from './ui'
 import { getAgentName, getAgentColor, normalizeAgentId } from '../utils/agents'
 import { formatTimeAgo, formatDuration, getSessionDuration } from '../utils/time'
 import type { Session } from '../types'
@@ -118,27 +118,27 @@ export function SessionsPage() {
             />
           </div>
 
-          <select
+          <SimpleSelect
             value={agentFilter}
-            onChange={e => setAgentFilter(e.target.value)}
-            className="bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-700 appearance-none cursor-pointer"
-          >
-            <option value="all">All Agents</option>
-            {agentsInSessions.map(id => (
-              <option key={id} value={id}>{getAgentName(id)}</option>
-            ))}
-          </select>
+            options={[
+              { value: 'all', label: 'All Agents' },
+              ...agentsInSessions.map(id => ({ value: id, label: getAgentName(id) }))
+            ]}
+            onChange={setAgentFilter}
+            className="w-40"
+          />
 
-          <select
+          <SimpleSelect
             value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
-            className="bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-neutral-700 appearance-none cursor-pointer"
-          >
-            <option value="all">All Status</option>
-            <option value="active">Active</option>
-            <option value="completed">Completed</option>
-            <option value="aborted">Aborted</option>
-          </select>
+            options={[
+              { value: 'all', label: 'All Status' },
+              { value: 'active', label: 'Active' },
+              { value: 'completed', label: 'Completed' },
+              { value: 'aborted', label: 'Aborted' }
+            ]}
+            onChange={setStatusFilter}
+            className="w-36"
+          />
 
           {(searchTerm || agentFilter !== 'all' || statusFilter !== 'all') && (
             <button

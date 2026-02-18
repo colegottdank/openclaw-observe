@@ -67,6 +67,39 @@ router.patch('/api/gateway/config', async (req, res) => {
   }
 })
 
+router.get('/api/gateway/config/raw', async (req, res) => {
+  try {
+    const content = await fs.readFile(CONFIG_PATH, 'utf-8')
+    res.json({ content })
+  } catch (e) {
+    if (e.code === 'ENOENT') {
+      return res.status(404).json({ error: 'Config file not found' })
+    }
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.put('/api/gateway/config/raw', async (req, res) => {
+  const { content } = req.body
+  if (typeof content !== 'string') {
+    return res.status(400).json({ error: 'content must be a string' })
+  }
+
+  try {
+    JSON.parse(content)
+  } catch (e) {
+    return res.status(400).json({ error: `Invalid JSON: ${e.message}` })
+  }
+
+  try {
+    await fs.writeFile(CONFIG_PATH, content, 'utf-8')
+    configCache.invalidate()
+    res.json({ success: true })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 router.get('/api/gateway/status', (req, res) => {
   exec('openclaw gateway status --json', (error, stdout, stderr) => {
     if (error) {

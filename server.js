@@ -20,7 +20,7 @@ app.use(agentsRouter)
 app.use(gatewayRouter)
 app.use(swarmRouter)
 
-const PORT = 3001
+const PORT = 3179
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`API Server running on port ${PORT}`)
 })

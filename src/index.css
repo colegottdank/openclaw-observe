@@ -8,6 +8,22 @@ body {
   @apply bg-neutral-950 text-neutral-300 font-sans antialiased;
 }
 
+/* Global cursor fixes */
+button,
+[role="button"],
+[role="tab"],
+a {
+  cursor: pointer;
+}
+
+button:disabled,
+[role="button"]:disabled,
+[role="tab"]:disabled,
+a:disabled,
+.disabled {
+  cursor: not-allowed;
+}
+
 /* Custom scrollbar for terminals */
 .scrollbar-hide::-webkit-scrollbar {
     display: none;

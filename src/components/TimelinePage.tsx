@@ -4,10 +4,7 @@ import {
   X,
   Heart,
   Calendar,
-  Zap,
-  RefreshCw,
-  ChevronLeft,
-  ChevronRight
+  Zap
 } from 'lucide-react'
 import { useAgents, useSwarmActivity, useSessionLogs } from '../hooks'
 import { normalizeAgentId, getAgentName, getActivityType, getActivityTypeColor } from '../utils/agents'
@@ -86,7 +83,7 @@ export function TimelinePage() {
     for (let i = 0; i <= 10; i++) {
       lines.push(timeRange.start + i * step)
     }
-    return lines.reverse()
+    return lines // Don't reverse - keep oldest to newest (left to right)
   }, [timeRange])
 
   const closeSidebar = () => {
@@ -203,31 +200,22 @@ export function TimelinePage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={refetch}
-            disabled={loading}
-            className="p-2 rounded-md bg-neutral-800 text-neutral-400 hover:text-white disabled:opacity-30 transition-colors"
-            title="Refresh"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-          <div className="flex items-center gap-1 bg-neutral-800 rounded-lg p-1">
-            <button
-              onClick={() => setWindowHours(Math.max(0.5, windowHours / 2))}
-              disabled={windowHours <= 0.5}
-              className="p-1.5 rounded text-neutral-400 hover:text-white hover:bg-neutral-700 disabled:opacity-30 transition-colors"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="text-sm font-mono text-neutral-300 min-w-[60px] text-center px-2">{windowHours}h</span>
-            <button
-              onClick={() => setWindowHours(Math.min(24, windowHours * 2))}
-              disabled={windowHours >= 24}
-              className="p-1.5 rounded text-neutral-400 hover:text-white hover:bg-neutral-700 disabled:opacity-30 transition-colors"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
+        <div className="flex items-center gap-2">
+          {/* Time range selector */}
+          <div className="flex items-center bg-neutral-800/50 rounded-lg p-0.5 border border-neutral-800">
+            {[0.5, 1, 3, 6, 12, 24].map(hours => (
+              <button
+                key={hours}
+                onClick={() => setWindowHours(hours)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  windowHours === hours
+                    ? 'bg-neutral-700 text-white shadow-sm'
+                    : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800'
+                }`}
+              >
+                {hours}h
+              </button>
+            ))}
           </div>
         </div>
       </div>

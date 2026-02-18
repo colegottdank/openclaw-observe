@@ -3,13 +3,11 @@ import { Link, Route, Switch, useLocation } from 'wouter'
 import {
 	LayoutDashboard,
 	Users,
-	FolderOpen,
-	Terminal,
-	Settings,
 	Menu,
 	X,
 	Clock,
 	ScrollText,
+	Terminal,
 	ChevronsLeft,
 } from 'lucide-react'
 
@@ -18,9 +16,7 @@ import { AgentDetail } from './components/AgentDetail'
 import { Layout } from './components/Layout'
 import { Overview } from './components/Overview'
 import { AgentsList } from './components/AgentsList'
-import { FilesPage } from './components/FilesPage'
 import { LogsPage } from './components/LogsPage'
-import { SettingsPage } from './components/SettingsPage'
 import { NotFound } from './components/NotFound'
 import { TimelinePage } from './components/TimelinePage'
 import { SessionsPage } from './components/SessionsPage'
@@ -32,9 +28,7 @@ const NAV_ITEMS = [
 	{ label: 'Timeline', path: '/timeline', icon: Clock },
 	{ label: 'Sessions', path: '/sessions', icon: ScrollText },
 	{ label: 'Agents', path: '/agents', icon: Users },
-	{ label: 'Files', path: '/files', icon: FolderOpen },
 	{ label: 'Logs', path: '/logs', icon: Terminal },
-	{ label: 'Settings', path: '/settings', icon: Settings },
 ]
 
 export default function App() {
@@ -76,7 +70,7 @@ export default function App() {
 			{/* SIDEBAR */}
 			<aside
 				className={`
-					fixed inset-y-0 left-0 z-50 bg-neutral-900 border-r border-neutral-800 
+					fixed inset-y-0 left-0 z-50 bg-neutral-900 border-r border-neutral-800
 					flex flex-col transition-all duration-300 ease-out
 					lg:static lg:translate-x-0
 					${collapsed && mounted ? 'lg:w-[72px]' : 'lg:w-60'}
@@ -86,9 +80,9 @@ export default function App() {
 				{/* Header */}
 				<div className="h-14 flex items-center shrink-0 border-b border-neutral-800 px-3">
 					<Link href="/" className="flex items-center gap-3 overflow-hidden flex-1">
-						<img 
-							src="/logo.svg" 
-							alt="OpenClaw" 
+						<img
+							src="/logo.svg"
+							alt="Reef"
 							className="w-8 h-8 shrink-0"
 						/>
 						<span className={`
@@ -96,10 +90,10 @@ export default function App() {
 							transition-all duration-300 ease-out
 							${collapsed && mounted ? 'lg:opacity-0 lg:w-0' : 'opacity-100'}
 						`}>
-							OpenClaw
+							Reef
 						</span>
 					</Link>
-					
+
 					{/* Collapse toggle - desktop only */}
 					<button
 						onClick={toggleCollapsed}
@@ -117,9 +111,9 @@ export default function App() {
 							<ChevronsLeft className="w-4 h-4" />
 						</div>
 					</button>
-					
-					<button 
-						onClick={() => setSidebarOpen(false)} 
+
+					<button
+						onClick={() => setSidebarOpen(false)}
 						className="lg:hidden text-neutral-500 hover:text-white p-1.5 rounded-md hover:bg-neutral-800 transition-colors"
 					>
 						<X className="w-4 h-4" />
@@ -151,15 +145,15 @@ export default function App() {
 											flex items-center justify-center shrink-0
 											${collapsed && mounted ? 'w-10' : 'w-5'}
 										`}>
-											<Icon 
+											<Icon
 												className={`
 													shrink-0 transition-transform duration-150
 													${isActive ? 'text-indigo-400' : 'text-neutral-500 group-hover:text-neutral-300'}
-												`} 
-												size={collapsed && mounted ? 20 : 18} 
+												`}
+												size={collapsed && mounted ? 20 : 18}
 											/>
 										</div>
-										
+
 										<span className={`
 											whitespace-nowrap transition-all duration-300 ease-out
 											${collapsed && mounted ? 'lg:opacity-0 lg:w-0 lg:hidden' : 'opacity-100'}
@@ -194,13 +188,13 @@ export default function App() {
 				{/* MOBILE HEADER */}
 				<div className="lg:hidden h-14 border-b border-neutral-800/60 flex items-center px-4 bg-neutral-900/50 backdrop-blur shrink-0 justify-between">
 					<div className="flex items-center gap-3">
-						<button 
-							onClick={() => setSidebarOpen(true)} 
+						<button
+							onClick={() => setSidebarOpen(true)}
 							className="text-neutral-400 hover:text-white p-1.5 -ml-1.5 rounded-md hover:bg-neutral-800/50 transition-colors"
 						>
 							<Menu className="w-5 h-5" />
 						</button>
-						<span className="font-bold text-neutral-100">OpenClaw</span>
+						<span className="font-bold text-neutral-100">Reef</span>
 					</div>
 					<span className={`w-2 h-2 rounded-full ${statusColor} ${isOnline ? 'animate-pulse' : ''}`} title={statusLabel} />
 				</div>
@@ -231,16 +225,9 @@ export default function App() {
 					<Route path="/agents">
 						<Layout><AgentsList /></Layout>
 					</Route>
-					<Route path="/files">
-						<Layout><FilesPage /></Layout>
-					</Route>
 
 					<Route path="/logs">
 						<Layout><LogsPage /></Layout>
-					</Route>
-
-					<Route path="/settings">
-						<Layout><SettingsPage /></Layout>
 					</Route>
 
 					<Route path="/:rest*">

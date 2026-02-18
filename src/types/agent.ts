@@ -11,19 +11,16 @@ export interface Agent {
   lastActive?: string | null
   workspace?: string
   displayName?: string
+  subagents?: string[]
+  sessionCount?: number
+  errorCount?: number
+  currentTask?: string | null
+  totalTokens?: number
 }
 
-export interface AgentConfig {
+export interface SwarmGroup {
   id: string
-  name?: string
-  enabled?: boolean
-  model?: string
-  lastActive?: string
-  workspace?: string
-  identity?: {
-    name?: string
-    emoji?: string
-    theme?: string
-  }
-  [key: string]: unknown
+  name: string
+  leader: Agent
+  members: Agent[]
 }

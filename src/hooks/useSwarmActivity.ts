@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { usePolling } from './usePolling'
 import type { SwarmActivity } from '../types'
 
@@ -15,6 +16,11 @@ export function useSwarmActivity(windowHours: number = 1) {
     },
     interval: 5000,
   })
+
+  // Auto-refresh when window changes
+  useEffect(() => {
+    refetch()
+  }, [windowHours, refetch])
 
   return { data, loading, error, refetch }
 }

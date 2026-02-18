@@ -100,10 +100,14 @@ export function SessionTraceViewer({ logs, loading = false }: SessionTraceViewer
       userHasScrolled.current = false
       return
     }
+    // Scroll to bottom on initial load (first time logs appear)
     if (prevLogCount.current === 0) {
+      // Small delay to ensure DOM is rendered
+      setTimeout(() => scrollToBottom(true), 50)
       prevLogCount.current = logs.length
       return
     }
+    // Auto-scroll on new messages if user hasn't manually scrolled up
     if (logs.length > prevLogCount.current && !userHasScrolled.current) {
       scrollToBottom(true)
     }
@@ -127,11 +131,21 @@ export function SessionTraceViewer({ logs, loading = false }: SessionTraceViewer
   const matchesFilter = (turn: Turn) => {
     if (filter === 'user') return turn.role === 'user'
     if (filter === 'error') {
-      return turn.entries.some(e =>
-        e.type === 'error' ||
-        (e.type === 'tool_result' && e.isError) ||
-        JSON.stringify(e).toLowerCase().includes('error')
-      )
+      return turn.entries.some(e => {
+        // Explicit error type
+        if (e.type === 'error') return true
+        // Tool marked as error
+        if (e.type === 'tool_result' && e.isError) return true
+        // Tool output containing error structure (not just the word)
+        const output = typeof e.output === 'string' ? e.output : JSON.stringify(e.output)
+        if (output && (
+          output.includes('"error":') ||
+          output.includes('"code": 4') ||
+          output.includes('"code": 5') ||
+          output.includes('"status": "error"')
+        )) return true
+        return false
+      })
     }
     return true
   }

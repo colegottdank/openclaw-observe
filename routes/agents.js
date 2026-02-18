@@ -28,15 +28,29 @@ router.get('/api/agents', async (req, res) => {
       const agentDir = agentConfig.workspace || path.join(AGENTS_ROOT, agentId)
       let status = 'idle'
       let lastActive = null
+      let sessionCount = 0
+      let errorCount = 0
+      let currentTask = null
+      let totalTokens = 0
 
       try {
         const sessionsFile = path.join(agentDir, 'sessions', 'sessions.json')
         await fs.access(sessionsFile)
         const sessionData = await fs.readFile(sessionsFile, 'utf-8')
         const sessions = JSON.parse(sessionData)
-        const activeSession = Object.values(sessions).find(s => s.active)
-        if (activeSession) status = 'busy'
-        const times = Object.values(sessions).map(s => s.updatedAt || 0)
+        const sessionList = Object.values(sessions)
+        sessionCount = sessionList.length
+
+        const activeSession = sessionList.find(s => s.active)
+        if (activeSession) {
+          status = 'busy'
+          currentTask = activeSession.label || activeSession.displayName || null
+        }
+
+        errorCount = sessionList.filter(s => s.abortedLastRun).length
+        totalTokens = sessionList.reduce((sum, s) => sum + (s.totalTokens || 0), 0)
+
+        const times = sessionList.map(s => s.updatedAt || 0)
         if (times.length > 0) lastActive = new Date(Math.max(...times)).toISOString()
       } catch {}
 
@@ -53,6 +67,11 @@ router.get('/api/agents', async (req, res) => {
         model: agentConfig.model || 'default',
         enabled: true,
         workspace: relWorkspace || '',
+        subagents: agentConfig.subagents?.allowAgents || [],
+        sessionCount,
+        errorCount,
+        currentTask,
+        totalTokens,
       })
     }
 

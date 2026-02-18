@@ -4,7 +4,6 @@ import { useSessions, useSessionLogs } from '../hooks'
 import { getAgentColor } from '../utils/agents'
 import { formatTimeAgo, formatDuration, getSessionDuration } from '../utils/time'
 import { StatusDot } from './ui'
-import { FileBrowser } from './FileBrowser'
 import { SessionTraceViewer } from './SessionTraceViewer'
 import type { Agent } from '../types'
 
@@ -17,9 +16,8 @@ export function AgentDetail({ agent, onBack }: AgentDetailProps) {
   const searchParams = new URLSearchParams(window.location.search)
   const initialTab = searchParams.get('tab') || 'overview'
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'files' | 'sessions'>(initialTab as 'overview' | 'files' | 'sessions')
+  const [activeTab, setActiveTab] = useState<'overview' | 'sessions'>(initialTab as 'overview' | 'sessions')
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
-  const [filePath, setFilePath] = useState(agent.workspace || agent.id)
 
   const agentId = agent.id
   // Always fetch sessions so overview can show stats
@@ -84,7 +82,7 @@ export function AgentDetail({ agent, onBack }: AgentDetailProps) {
         {/* TABS */}
         {!selectedSessionId && (
           <div className="flex gap-1 bg-neutral-900 p-1 rounded-lg border border-neutral-800">
-            {(['overview', 'files', 'sessions'] as const).map(tab => (
+            {(['overview', 'sessions'] as const).map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -229,17 +227,6 @@ export function AgentDetail({ agent, onBack }: AgentDetailProps) {
                 </div>
               )}
             </div>
-          </div>
-        )}
-
-        {/* FILES TAB */}
-        {activeTab === 'files' && !selectedSessionId && (
-          <div className="flex-1 p-4 overflow-hidden">
-            <FileBrowser
-              currentPath={filePath}
-              onNavigate={setFilePath}
-              className="h-full"
-            />
           </div>
         )}
 

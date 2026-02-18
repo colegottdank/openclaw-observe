@@ -1,4 +1,4 @@
-import type { Agent, SwarmActivity, ActivityType } from '../types'
+import type { Agent, SwarmGroup, SwarmActivity, ActivityType } from '../types'
 
 /**
  * Deterministically generate a color from an agent ID.
@@ -56,6 +56,69 @@ export function getActivityType(activity: SwarmActivity): ActivityType {
     return 'subagent'
   }
   return 'regular'
+}
+
+/**
+ * Group agents into swarms based on subagent relationships.
+ * An agent with subagents is the "leader" of a swarm.
+ * Agents listed in another agent's subagents are "members".
+ * Agents with no relationships are "standalone" (returned with leader === the agent itself, empty members).
+ */
+export function groupAgentsBySwarm(agents: Agent[]): { swarms: SwarmGroup[]; standalone: Agent[] } {
+  const agentMap = new Map(agents.map(a => [a.id, a]))
+  const memberOf = new Set<string>()
+
+  // Find leaders: agents that have subagents
+  const swarms: SwarmGroup[] = []
+  for (const agent of agents) {
+    const subs = agent.subagents || []
+    if (subs.length === 0) continue
+
+    const members = subs
+      .map(id => agentMap.get(id))
+      .filter((a): a is Agent => !!a)
+
+    if (members.length === 0) continue
+
+    // Derive swarm name from common prefix or leader name
+    const prefix = getCommonPrefix(agent.id, subs)
+    const name = prefix
+      ? prefix.replace(/-$/, '').split('-').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ')
+      : agent.name
+
+    subs.forEach(id => memberOf.add(id))
+    memberOf.add(agent.id) // leader is also part of the swarm
+
+    swarms.push({ id: prefix || agent.id, name, leader: agent, members })
+  }
+
+  // Standalone: not a leader and not a member of any swarm
+  const standalone = agents.filter(a => !memberOf.has(a.id))
+
+  return { swarms, standalone }
+}
+
+/**
+ * Find the common prefix shared by a leader ID and its member IDs.
+ * e.g. "debateai-atlas" + ["debateai-forge", "debateai-pixel"] → "debateai-"
+ */
+function getCommonPrefix(leaderId: string, memberIds: string[]): string {
+  const all = [leaderId, ...memberIds]
+  if (all.length < 2) return ''
+
+  let prefix = ''
+  for (let i = 0; i < all[0].length; i++) {
+    const char = all[0][i]
+    if (all.every(id => id[i] === char)) {
+      prefix += char
+    } else {
+      break
+    }
+  }
+
+  // Only return if it's a meaningful prefix (at least one segment before a dash)
+  if (prefix.includes('-') && prefix.length > 2) return prefix
+  return ''
 }
 
 /**
