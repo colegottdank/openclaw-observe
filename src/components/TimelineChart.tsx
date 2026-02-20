@@ -300,10 +300,10 @@ export function TimelineChart({
 
   return (
     <>
-      <div ref={chartRef} className="min-w-[800px] bg-neutral-900/30 rounded-lg border border-neutral-800 overflow-hidden select-none relative">
+      <div ref={chartRef} className="min-w-[800px] bg-neutral-900/30 rounded-lg overflow-hidden select-none relative">
         {/* Time header */}
         <div className="flex border-b border-neutral-800 bg-neutral-900/50">
-          <div className="w-24 sm:w-32 shrink-0 p-3 text-xs font-medium text-neutral-500 border-r border-neutral-800 bg-neutral-900/50 sticky left-0 z-20">
+          <div className="w-24 sm:w-32 shrink-0 p-3 text-xs font-medium text-neutral-500 bg-neutral-900/50 sticky left-0 z-20">
             Agent
           </div>
           <div className="flex-1 relative h-10">
@@ -344,7 +344,7 @@ export function TimelineChart({
                     
                     {/* Group label */}
                     <div className="flex border-b border-neutral-800/50 bg-neutral-900/30">
-                      <div className="w-24 sm:w-32 shrink-0 px-3 py-2 flex items-center gap-2 border-r border-neutral-800/50 sticky left-0 z-20">
+                      <div className="w-24 sm:w-32 shrink-0 px-3 py-2 flex items-center gap-2 sticky left-0 z-20">
                         <div className={`w-5 h-5 rounded-md flex items-center justify-center ${isStandalone ? 'bg-neutral-800' : 'bg-indigo-500/20'}`}>
                           {isStandalone ? (
                             <Bot className="w-3 h-3 text-neutral-500" />
@@ -393,7 +393,7 @@ export function TimelineChart({
 
                         return (
                           <div key={agentId} className="flex hover:bg-neutral-800/20 transition-colors relative" style={{ height: `${rowHeight}px` }}>
-                            <div className="w-24 sm:w-32 shrink-0 p-3 flex items-center gap-1.5 border-r border-neutral-800 bg-neutral-900/30 sticky left-0 z-20" title={getAgentName(agentId)}>
+                            <div className="w-24 sm:w-32 shrink-0 p-3 flex items-center gap-1.5 sticky left-0 z-20" title={getAgentName(agentId)}>
                               <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: agentColor }} />
                               <span className="text-xs font-medium text-neutral-300 truncate">{getAgentName(agentId)}</span>
                               {activities.some(a => a.status === 'active') && (
@@ -494,7 +494,7 @@ export function TimelineChart({
 
                 return (
                   <div key={agentId} className="flex hover:bg-neutral-800/20 transition-colors" style={{ height: `${rowHeight}px` }}>
-                    <div className="w-24 sm:w-32 shrink-0 p-3 flex items-center gap-1.5 border-r border-neutral-800 bg-neutral-900/30 sticky left-0 z-20" title={getAgentName(agentId)}>
+                    <div className="w-24 sm:w-32 shrink-0 p-3 flex items-center gap-1.5 sticky left-0 z-20" title={getAgentName(agentId)}>
                       <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: agentColor }} />
                       <span className="text-xs font-medium text-neutral-300 truncate">{getAgentName(agentId)}</span>
                       {activities.some(a => a.status === 'active') && (
