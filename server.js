@@ -14,7 +14,24 @@ const __dirname = path.dirname(__filename)
 
 export function createApp() {
   const app = express()
-  app.use(express.json({ limit: '50mb' }))
+  app.use(express.json({ limit: '5mb' }))
+
+  // CORS — restrict to same-origin by default
+  app.use((req, res, next) => {
+    const origin = req.headers.origin
+    const host = req.headers.host
+    // Allow requests from the same host (dev server proxy, same-origin browser)
+    if (origin) {
+      const originHost = new URL(origin).host
+      if (originHost === host || originHost === `localhost:${process.env.REEF_PORT || 3179}`) {
+        res.setHeader('Access-Control-Allow-Origin', origin)
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS')
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+      }
+    }
+    if (req.method === 'OPTIONS') return res.sendStatus(204)
+    next()
+  })
 
   // Serve built frontend from dist/ (production)
   const distDir = path.join(__dirname, 'dist')
@@ -40,14 +57,15 @@ export function createApp() {
 
 export function createServer(options = {}) {
   const port = options.port || parseInt(process.env.REEF_PORT) || 3179
+  const host = options.host || process.env.REEF_HOST || '127.0.0.1'
   const app = createApp()
   let httpServer = null
 
   return {
     start() {
       return new Promise((resolve) => {
-        httpServer = app.listen(port, '0.0.0.0', () => {
-          console.log(`Reef server running on http://localhost:${port}`)
+        httpServer = app.listen(port, host, () => {
+          console.log(`Reef server running on http://${host}:${port}`)
           console.log(`Data directory: ${ROOT_DIR}`)
           console.log(`Agents root: ${AGENTS_ROOT}`)
           resolve(httpServer)

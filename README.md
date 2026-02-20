@@ -55,6 +55,7 @@ Restart the gateway and Reef will be available at `http://localhost:3179`.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `port` | `3179` | HTTP port for the dashboard |
+| `host` | `127.0.0.1` | Bind address (`0.0.0.0` for remote access) |
 | `dataDir` | `~/.openclaw` | Path to the OpenClaw data directory |
 
 ## Standalone Setup
@@ -76,6 +77,7 @@ The server reads agent data from `~/.openclaw/agents/` by default. Configure via
 | `REEF_DATA_DIR` | `~/.openclaw` | OpenClaw data directory |
 | `REEF_CONFIG_PATH` | `~/.openclaw/clawdbot.json` | OpenClaw config file path |
 | `REEF_PORT` | `3179` | Server port |
+| `REEF_HOST` | `127.0.0.1` | Bind address (`0.0.0.0` for remote access) |
 
 ### Development
 
@@ -111,8 +113,7 @@ reef timeline --window=6     Show last 6 hours
 reef status                  Gateway health check
 reef logs                    Tail gateway logs
 reef logs --lines=100        More log lines
-reef config                  View gateway config
-reef config --raw            Unredacted config
+reef config                  View gateway config (redacted)
 ```
 
 ### Environment

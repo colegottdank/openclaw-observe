@@ -1,17 +1,19 @@
 import { Router } from 'express'
 import fs from 'fs/promises'
 import path from 'path'
-import { ROOT_DIR, WORKSPACE_ROOT } from '../lib/paths.js'
+import { AGENTS_ROOT } from '../lib/paths.js'
 
 const router = Router()
 
+// Read-only file browser scoped to the agents directory
 router.get('/api/files', async (req, res) => {
   try {
-    const relativePath = req.query.path || 'workspace'
+    const relativePath = req.query.path || ''
     const safePath = path.normalize(relativePath).replace(/^(\.\.(\/|\\|$))+/, '')
-    const fullPath = path.join(WORKSPACE_ROOT, safePath)
+    const fullPath = path.resolve(AGENTS_ROOT, safePath)
 
-    if (!fullPath.startsWith(ROOT_DIR)) {
+    // Strict containment check — must stay within AGENTS_ROOT
+    if (!fullPath.startsWith(path.resolve(AGENTS_ROOT))) {
       return res.status(403).json({ error: 'Access denied' })
     }
 
@@ -19,7 +21,9 @@ router.get('/api/files', async (req, res) => {
 
     if (stats.isDirectory()) {
       const entries = await fs.readdir(fullPath, { withFileTypes: true })
-      const list = await Promise.all(entries.map(async (f) => {
+      // Cap directory listing to prevent unbounded reads
+      const limited = entries.slice(0, 500)
+      const list = await Promise.all(limited.map(async (f) => {
         let updatedAt
         try {
           const st = await fs.stat(path.join(fullPath, f.name))
@@ -34,35 +38,17 @@ router.get('/api/files', async (req, res) => {
       }))
       res.json({ type: 'directory', files: list })
     } else {
+      // Cap file reads at 10MB
+      if (stats.size > 10 * 1024 * 1024) {
+        return res.status(413).json({ error: 'File too large' })
+      }
       const content = await fs.readFile(fullPath, 'utf-8')
       res.json({ type: 'file', content, path: relativePath })
     }
   } catch (err) {
-    console.error('Error reading file:', err)
-    res.status(500).json({ error: err.message })
-  }
-})
-
-router.post('/api/files', async (req, res) => {
-  try {
-    const { path: relativePath, content } = req.body
-    if (!relativePath) {
-      return res.status(400).json({ error: 'Path is required' })
-    }
-
-    const safePath = path.normalize(relativePath).replace(/^(\.\.(\/|\\|$))+/, '')
-    const fullPath = path.join(WORKSPACE_ROOT, safePath)
-
-    if (!fullPath.startsWith(WORKSPACE_ROOT)) {
-      return res.status(403).json({ error: 'Access denied' })
-    }
-
-    await fs.writeFile(fullPath, content, 'utf-8')
-    console.log('Saved file:', relativePath)
-    res.json({ success: true })
-  } catch (err) {
-    console.error('Error writing file:', err)
-    res.status(500).json({ error: err.message })
+    if (err.code === 'ENOENT') return res.status(404).json({ error: 'Not found' })
+    console.error('Error reading file:', err.message)
+    res.status(500).json({ error: 'Failed to read file' })
   }
 })
 

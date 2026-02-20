@@ -3,47 +3,43 @@ import fs from 'fs/promises'
 import { createReadStream } from 'fs'
 import { createInterface } from 'readline'
 import path from 'path'
+import os from 'os'
 import { spawn } from 'child_process'
 import { ROOT_DIR, AGENTS_ROOT } from '../lib/paths.js'
 
 const router = Router()
 
-// --- Mock data for testing ---
+// --- Mock data for testing (dev only) ---
 let mockActivities = []
 
-// Load mock data from fixture file
-router.post('/api/swarm/mock', async (req, res) => {
-  try {
-    const fixturePath = new URL('../fixtures/mock-swarm.json', import.meta.url).pathname
-    const data = JSON.parse(await fs.readFile(fixturePath, 'utf-8'))
-    const now = Date.now()
+if (process.env.NODE_ENV !== 'production') {
+  router.post('/api/swarm/mock', async (req, res) => {
+    try {
+      const fixturePath = new URL('../fixtures/mock-swarm.json', import.meta.url).pathname
+      const data = JSON.parse(await fs.readFile(fixturePath, 'utf-8'))
+      const now = Date.now()
+      mockActivities = data.activities.map(a => ({
+        ...a,
+        start: now + a.start,
+        end: a.end === null ? now : now + a.end,
+      }))
+      console.log(`[mock] Loaded ${mockActivities.length} mock activities`)
+      res.json({ loaded: mockActivities.length })
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to load mock data' })
+    }
+  })
 
-    // Resolve relative timestamps (negative = ms before now, null = active/now)
-    mockActivities = data.activities.map(a => ({
-      ...a,
-      start: now + a.start,
-      end: a.end === null ? now : now + a.end,
-    }))
+  router.delete('/api/swarm/mock', (req, res) => {
+    const count = mockActivities.length
+    mockActivities = []
+    res.json({ cleared: count })
+  })
 
-    console.log(`[mock] Loaded ${mockActivities.length} mock activities`)
-    res.json({ loaded: mockActivities.length })
-  } catch (err) {
-    res.status(500).json({ error: err.message })
-  }
-})
-
-// Clear mock data
-router.delete('/api/swarm/mock', (req, res) => {
-  const count = mockActivities.length
-  mockActivities = []
-  console.log(`[mock] Cleared ${count} mock activities`)
-  res.json({ cleared: count })
-})
-
-// Check mock status
-router.get('/api/swarm/mock', (req, res) => {
-  res.json({ count: mockActivities.length, activities: mockActivities })
-})
+  router.get('/api/swarm/mock', (req, res) => {
+    res.json({ count: mockActivities.length, activities: mockActivities })
+  })
+}
 
 /** Read first line (metadata) and last line (real end time) of a JSONL session file */
 async function readSessionMeta(filePath) {
@@ -84,16 +80,16 @@ async function readSessionMeta(filePath) {
 
 router.get('/api/gateway/logs', async (req, res) => {
   try {
-    const lines = parseInt(req.query.lines) || 100
+    const lines = Math.min(Math.max(parseInt(req.query.lines) || 100, 1), 5000)
     const logPath = path.join(ROOT_DIR, 'logs', 'gateway.log')
 
-    // Check primary log path, then scan /tmp/openclaw/ for latest log
+    // Check primary log path, then scan platform-appropriate temp dir
     let targetLog = logPath
     try {
       await fs.access(logPath)
     } catch {
       try {
-        const tmpDir = '/tmp/openclaw'
+        const tmpDir = path.join(os.tmpdir(), 'openclaw')
         const files = await fs.readdir(tmpDir)
         const logFiles = files.filter(f => f.endsWith('.log')).sort().reverse()
         targetLog = logFiles.length > 0 ? path.join(tmpDir, logFiles[0]) : logPath
@@ -107,7 +103,8 @@ router.get('/api/gateway/logs', async (req, res) => {
       res.json({ logs: output })
     })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    console.error('Error reading logs:', err.message)
+    res.status(500).json({ error: 'Failed to read logs' })
   }
 })
 

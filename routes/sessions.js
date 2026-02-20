@@ -9,26 +9,27 @@ import { createCache } from '../lib/cache.js'
 const router = Router()
 const sessionCache = createCache(5000)
 
-// --- Mock session logs ---
+// --- Mock session logs (dev only) ---
 let mockSessionLogs = {}
 
-router.post('/api/sessions/mock', async (req, res) => {
-  try {
-    const fixturePath = new URL('../fixtures/mock-sessions.json', import.meta.url).pathname
-    mockSessionLogs = JSON.parse(await fs.readFile(fixturePath, 'utf-8'))
-    console.log(`[mock] Loaded mock logs for ${Object.keys(mockSessionLogs).length} sessions`)
-    res.json({ loaded: Object.keys(mockSessionLogs).length })
-  } catch (err) {
-    res.status(500).json({ error: err.message })
-  }
-})
+if (process.env.NODE_ENV !== 'production') {
+  router.post('/api/sessions/mock', async (req, res) => {
+    try {
+      const fixturePath = new URL('../fixtures/mock-sessions.json', import.meta.url).pathname
+      mockSessionLogs = JSON.parse(await fs.readFile(fixturePath, 'utf-8'))
+      console.log(`[mock] Loaded mock logs for ${Object.keys(mockSessionLogs).length} sessions`)
+      res.json({ loaded: Object.keys(mockSessionLogs).length })
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to load mock data' })
+    }
+  })
 
-router.delete('/api/sessions/mock', (req, res) => {
-  const count = Object.keys(mockSessionLogs).length
-  mockSessionLogs = {}
-  console.log(`[mock] Cleared mock session logs`)
-  res.json({ cleared: count })
-})
+  router.delete('/api/sessions/mock', (req, res) => {
+    const count = Object.keys(mockSessionLogs).length
+    mockSessionLogs = {}
+    res.json({ cleared: count })
+  })
+}
 
 
 async function readFirstUserMessage(filePath) {
@@ -134,7 +135,7 @@ router.get('/api/sessions', async (req, res) => {
     res.json(result)
   } catch (err) {
     console.error('Error fetching sessions:', err)
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: 'Failed to fetch sessions' })
   }
 })
 

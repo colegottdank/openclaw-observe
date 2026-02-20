@@ -36,7 +36,7 @@ router.get('/api/gateway/config', async (req, res) => {
       return res.status(404).json({ error: 'Config file not found' })
     }
     console.error('Config read error:', e.message)
-    res.status(500).json({ error: e.message })
+    res.status(500).json({ error: 'Failed to read config' })
   }
 })
 
@@ -63,40 +63,7 @@ router.patch('/api/gateway/config', async (req, res) => {
     res.json({ message: 'Config update queued' })
   } catch (error) {
     console.error('Config patch error:', error)
-    res.status(500).json({ error: error.message })
-  }
-})
-
-router.get('/api/gateway/config/raw', async (req, res) => {
-  try {
-    const content = await fs.readFile(CONFIG_PATH, 'utf-8')
-    res.json({ content })
-  } catch (e) {
-    if (e.code === 'ENOENT') {
-      return res.status(404).json({ error: 'Config file not found' })
-    }
-    res.status(500).json({ error: e.message })
-  }
-})
-
-router.put('/api/gateway/config/raw', async (req, res) => {
-  const { content } = req.body
-  if (typeof content !== 'string') {
-    return res.status(400).json({ error: 'content must be a string' })
-  }
-
-  try {
-    JSON.parse(content)
-  } catch (e) {
-    return res.status(400).json({ error: `Invalid JSON: ${e.message}` })
-  }
-
-  try {
-    await fs.writeFile(CONFIG_PATH, content, 'utf-8')
-    configCache.invalidate()
-    res.json({ success: true })
-  } catch (e) {
-    res.status(500).json({ error: e.message })
+    res.status(500).json({ error: 'Failed to apply config patch' })
   }
 })
 
@@ -104,13 +71,14 @@ router.get('/api/gateway/status', (req, res) => {
   exec('openclaw gateway status --json', (error, stdout, stderr) => {
     if (error) {
       console.error('Status error:', stderr)
-      return res.status(500).json({ error: stderr || error.message, status: 'offline' })
+      return res.json({ error: 'Failed to get gateway status', status: 'offline' })
     }
     try {
       const rawStatus = JSON.parse(stdout)
-      const pid = rawStatus.service?.runtime?.pid
+      const rawPid = rawStatus.service?.runtime?.pid
+      const pid = typeof rawPid === 'number' ? rawPid : parseInt(rawPid)
 
-      if (!pid) {
+      if (!Number.isInteger(pid) || pid <= 0) {
         return res.json({
           status: 'offline',
           pid: null,
@@ -148,7 +116,8 @@ router.get('/api/gateway/status', (req, res) => {
         })
       })
     } catch (e) {
-      res.status(500).json({ error: 'Failed to parse status JSON', raw: stdout })
+      console.error('Failed to parse gateway status:', e.message)
+      res.status(500).json({ error: 'Failed to parse gateway status' })
     }
   })
 })
@@ -166,7 +135,7 @@ router.post('/api/gateway/restart', async (req, res) => {
     res.json({ success: true, message: 'Gateway restart initiated' })
   } catch (err) {
     console.error('Error restarting gateway:', err)
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: 'Failed to restart gateway' })
   }
 })
 

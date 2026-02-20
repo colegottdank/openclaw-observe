@@ -126,11 +126,9 @@ async function cmdLogs(args) {
   process.stdout.write(data.logs || data)
 }
 
-async function cmdConfig(args) {
-  const raw = args.includes('--raw')
-  const data = await api(raw ? '/api/gateway/config/raw' : '/api/gateway/config')
-  const content = raw ? data.content : data
-  console.log(typeof content === 'string' ? content : JSON.stringify(content, null, 2))
+async function cmdConfig() {
+  const data = await api('/api/gateway/config')
+  console.log(JSON.stringify(data, null, 2))
 }
 
 function usage() {
@@ -145,7 +143,7 @@ ${BOLD}Commands:${RESET}
   timeline [options]    Show swarm activity timeline
   status                Show gateway health
   logs [options]        Tail gateway logs
-  config [options]      View gateway config
+  config                View gateway config (redacted)
 
 ${BOLD}Options:${RESET}
   sessions:
@@ -157,9 +155,6 @@ ${BOLD}Options:${RESET}
 
   logs:
     --lines=<n>         Number of log lines (default: 50)
-
-  config:
-    --raw               Show unredacted raw config
 
 ${BOLD}Environment:${RESET}
   REEF_URL              API base URL (default: http://localhost:3179)`)

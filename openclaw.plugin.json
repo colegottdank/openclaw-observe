@@ -17,6 +17,11 @@
         "minimum": 1,
         "maximum": 65535
       },
+      "host": {
+        "type": "string",
+        "default": "127.0.0.1",
+        "description": "Bind address. Use 0.0.0.0 to allow remote access."
+      },
       "dataDir": {
         "type": "string",
         "description": "Path to the OpenClaw data directory. Defaults to ~/.openclaw (stateDir)."
@@ -28,6 +33,12 @@
       "label": "Dashboard Port",
       "help": "HTTP port for the Reef web dashboard",
       "placeholder": "3179"
+    },
+    "host": {
+      "label": "Bind Address",
+      "help": "Network interface to bind to. 127.0.0.1 = local only, 0.0.0.0 = all interfaces.",
+      "advanced": true,
+      "placeholder": "127.0.0.1"
     },
     "dataDir": {
       "label": "Data Directory",
