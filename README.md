@@ -154,4 +154,4 @@ cli/
 
 ## License
 
-Private — OpenClaw project.
+[MIT](LICENSE)

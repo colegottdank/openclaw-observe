@@ -1,6 +1,7 @@
 {
   "name": "reef",
   "version": "0.1.0",
+  "license": "MIT",
   "description": "Swarm observability for OpenClaw — monitor agent activity, inspect session traces, and visualize delegation trees.",
   "type": "module",
   "bin": {
