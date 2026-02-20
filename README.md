@@ -19,23 +19,73 @@ Swarm observability for [OpenClaw](https://github.com/colegottdank/openclaw) age
 - **Backend**: Express 5 (ESM), reads directly from OpenClaw agent data on disk
 - **CLI**: Zero dependencies — native `fetch` + ANSI formatting
 
-## Setup
+## Install as OpenClaw Plugin
+
+Reef runs as an OpenClaw plugin — it starts and stops automatically with the gateway.
 
 ```bash
-# Install dependencies
+# Clone into the global extensions directory
+git clone <repo-url> ~/.openclaw/extensions/reef
+cd ~/.openclaw/extensions/reef
 npm install
-
-# Start the API server (port 3179)
-node server.js
-
-# Start the dev server (port 5173)
-npm run dev
-
-# Or build for production
 npm run build
 ```
 
-The API server reads agent data from the OpenClaw agents directory (default: `~/.openclaw/agents/`). Configure paths in `lib/paths.js`.
+Then enable it in your `~/.openclaw/clawdbot.json`:
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "reef": {
+        "enabled": true,
+        "config": {
+          "port": 3179
+        }
+      }
+    }
+  }
+}
+```
+
+Restart the gateway and Reef will be available at `http://localhost:3179`.
+
+### Plugin Config
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `port` | `3179` | HTTP port for the dashboard |
+| `dataDir` | `~/.openclaw` | Path to the OpenClaw data directory |
+
+## Standalone Setup
+
+You can also run Reef without the OpenClaw plugin system.
+
+```bash
+npm install
+npm run build
+
+# Start the server (serves both API and built frontend)
+node server.js
+```
+
+The server reads agent data from `~/.openclaw/agents/` by default. Configure via environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REEF_DATA_DIR` | `~/.openclaw` | OpenClaw data directory |
+| `REEF_CONFIG_PATH` | `~/.openclaw/clawdbot.json` | OpenClaw config file path |
+| `REEF_PORT` | `3179` | Server port |
+
+### Development
+
+```bash
+# Start the Vite dev server (port 5173) with hot reload
+npm run dev
+
+# In another terminal, start the API server
+node server.js
+```
 
 ## CLI
 
@@ -74,7 +124,9 @@ reef config --raw            Unredacted config
 ## Architecture
 
 ```
-server.js              Express API server (port 3179)
+plugin.js              OpenClaw plugin entry point (registerService)
+openclaw.plugin.json   Plugin manifest and config schema
+server.js              Express API server (importable + standalone)
 routes/
   agents.js            Agent list, status, config from gateway
   sessions.js          Session list + JSONL log retrieval
@@ -82,7 +134,7 @@ routes/
   gateway.js           Gateway health, logs, config
   files.js             File serving
 lib/
-  paths.js             ROOT_DIR, AGENTS_ROOT, CONFIG_PATH
+  paths.js             Configurable paths (env vars or plugin config)
   cache.js             Simple TTL cache
 src/                   React frontend
   components/

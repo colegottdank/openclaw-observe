@@ -164,17 +164,11 @@ export function TimelineChart({
   }
 
   // Build flattened activity list with lanes and parent-child relationships
-  const { flatActivities, rowLaneCounts, agentLaneCounts } = useMemo(() => {
+  const { flatActivities, rowLaneCounts } = useMemo(() => {
     const { activities, rowLaneCounts } = flattenActivitiesWithLanes(agentRows, activitiesByAgent, now)
-    const map = buildParentChildMap(activities)
-    
-    // Build agentId -> lane count map
-    const agentLaneCounts = new Map<string, number>()
-    agentRows.forEach((agentId, index) => {
-      agentLaneCounts.set(agentId, rowLaneCounts[index])
-    })
-    
-    return { flatActivities: activities, rowLaneCounts, agentLaneCounts }
+    buildParentChildMap(activities)
+
+    return { flatActivities: activities, rowLaneCounts }
   }, [agentRows, activitiesByAgent, now])
 
   // Calculate which activities are in the hovered chain

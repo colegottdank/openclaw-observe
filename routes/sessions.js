@@ -3,7 +3,7 @@ import fs from 'fs/promises'
 import { createReadStream } from 'fs'
 import path from 'path'
 import { createInterface } from 'readline'
-import { AGENTS_ROOT, CHANNEL_MAP } from '../lib/paths.js'
+import { AGENTS_ROOT } from '../lib/paths.js'
 import { createCache } from '../lib/cache.js'
 
 const router = Router()
@@ -83,13 +83,12 @@ router.get('/api/sessions', async (req, res) => {
             let channelName = null
             if (s.deliveryContext?.channel === 'discord') {
               const chId = s.deliveryContext.to?.replace('channel:', '')
-              channelName = CHANNEL_MAP[chId]
-              context = channelName || `discord:${chId}`
+              channelName = s.deliveryContext.channelName || null
+              context = channelName || `discord:#${chId?.slice(-4) || chId}`
             } else if (key.includes('discord')) {
               const parts = key.split(':')
               const chId = parts[parts.length - 1]
-              channelName = CHANNEL_MAP[chId]
-              context = channelName || `discord:${chId}`
+              context = `discord:#${chId?.slice(-4) || chId}`
             }
             allSessions.push({
               ...s, key, agentId: agent,

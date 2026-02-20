@@ -12,7 +12,7 @@ import { normalizeAgentId, getAgentName, getActivityType, getActivityTypeColor, 
 import { formatTime } from '../utils/time'
 import { SessionTraceViewer } from './SessionTraceViewer'
 import { TimelineChart } from './TimelineChart'
-import { TimelineTooltip, TYPE_ICONS, TYPE_LABELS } from './TimelineTooltip'
+import { TimelineTooltip, TYPE_ICONS } from './TimelineTooltip'
 import { RunOverview } from './RunOverview'
 import { ResizablePanel, StatusBadge } from './ui'
 import type { SwarmActivity } from '../types'

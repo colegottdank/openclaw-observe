@@ -1,10 +1,10 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
-import { Terminal, RefreshCw, Search, Radio } from 'lucide-react'
+import { Terminal, RefreshCw, Search } from 'lucide-react'
 import { useGatewayStatus, useLogs } from '../hooks'
 import { SimpleSelect } from './ui'
 
 export function LogsPage() {
-  const [live, setLive] = useState(true)
+  const [live] = useState(true)
   const { data: logs, loading, refetch } = useLogs(live ? 2000 : 5000)
   const [levelFilter, setLevelFilter] = useState<'all' | 'error' | 'info' | 'warn'>('all')
   const [sourceFilter, setSourceFilter] = useState<string>('all')
@@ -33,7 +33,7 @@ export function LogsPage() {
   }, [logs, levelFilter, sourceFilter, search])
 
   // Scroll to bottom — instant on first load, smooth after
-  const scrollToBottom = useCallback((instant?: boolean) => {
+  const scrollToBottom = useCallback((_instant?: boolean) => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
