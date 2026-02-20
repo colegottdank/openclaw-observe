@@ -1,11 +1,19 @@
-import { Clock, Heart, Calendar, Zap, Circle } from 'lucide-react'
+import { Clock, Users, Bot, CircleDot } from 'lucide-react'
+import { useMemo, useRef } from 'react'
 import { getAgentName, getAgentColor, getActivityType, getActivityTypeColor } from '../utils/agents'
 import { formatTime } from '../utils/time'
 import { TYPE_ICONS } from './TimelineTooltip'
 import type { SwarmActivity } from '../types'
 
+interface AgentGroup {
+  name: string
+  startIndex: number
+  count: number
+}
+
 interface TimelineChartProps {
   agentRows: string[]
+  agentGroups: AgentGroup[]
   activitiesByAgent: Map<string, SwarmActivity[]>
   timeRange: { start: number; end: number; duration: number }
   timeGridLines: number[]
@@ -20,8 +28,104 @@ interface TimelineChartProps {
   loading: boolean
 }
 
+// Activity with lane assignment for sub-lane stacking
+interface ActivityWithLane {
+  activity: SwarmActivity
+  rowIndex: number
+  laneIndex: number
+}
+
+// Assign activities to lanes to avoid overlap
+function assignLanes(activities: SwarmActivity[], now: number): Map<string, number> {
+  const laneMap = new Map<string, number>()
+  const lanes: Array<{ start: number; end: number }[]> = []
+
+  // Sort by start time
+  const sorted = [...activities].sort((a, b) => a.start - b.start)
+
+  for (const activity of sorted) {
+    const start = activity.start
+    const end = activity.status === 'active' ? now : activity.end
+    
+    // Find first lane where this activity doesn't overlap
+    let assignedLane = -1
+    for (let i = 0; i < lanes.length; i++) {
+      const lane = lanes[i]
+      const hasOverlap = lane.some(slot => start < slot.end && end > slot.start)
+      if (!hasOverlap) {
+        assignedLane = i
+        lane.push({ start, end })
+        break
+      }
+    }
+    
+    // If no lane found, create new lane
+    if (assignedLane === -1) {
+      assignedLane = lanes.length
+      lanes.push([{ start, end }])
+    }
+    
+    laneMap.set(activity.sessionId, assignedLane)
+  }
+
+  return laneMap
+}
+
+// Flatten all activities with their row index and lane index for positioning
+function flattenActivitiesWithLanes(
+  agentRows: string[],
+  activitiesByAgent: Map<string, SwarmActivity[]>,
+  now: number
+): { activities: ActivityWithLane[]; rowLaneCounts: number[] } {
+  const activities: ActivityWithLane[] = []
+  const rowLaneCounts: number[] = []
+
+  agentRows.forEach((agentId, rowIndex) => {
+    const agentActivities = activitiesByAgent.get(agentId) || []
+    const laneMap = assignLanes(agentActivities, now)
+    const laneCount = Math.max(1, ...Array.from(laneMap.values())) + 1
+    rowLaneCounts.push(laneCount)
+
+    agentActivities.forEach(activity => {
+      activities.push({
+        activity,
+        rowIndex,
+        laneIndex: laneMap.get(activity.sessionId) || 0
+      })
+    })
+  })
+
+  return { activities, rowLaneCounts }
+}
+
+// Build parent-child relationships
+function buildParentChildMap(
+  activities: ActivityWithLane[]
+): Map<string, ActivityWithLane[]> {
+  const map = new Map<string, ActivityWithLane[]>()
+  
+  activities.forEach(item => {
+    if (item.activity.parentSessionId) {
+      const children = map.get(item.activity.parentSessionId) || []
+      children.push(item)
+      map.set(item.activity.parentSessionId, children)
+    }
+  })
+  
+  return map
+}
+
+// Find parent activity
+function findParent(
+  activities: ActivityWithLane[],
+  parentSessionId: string
+): ActivityWithLane | null {
+  return activities.find(item => item.activity.sessionId === parentSessionId) || null
+}
+
 export function TimelineChart({
   agentRows,
+  agentGroups,
   activitiesByAgent,
   timeRange,
   timeGridLines,
@@ -35,25 +139,138 @@ export function TimelineChart({
   onRefresh,
   loading,
 }: TimelineChartProps) {
+  const chartRef = useRef<HTMLDivElement>(null)
+  
   const getActivityStyle = (activity: SwarmActivity) => {
     const startTime = activity.start
     const endTime = activity.status === 'active' ? now : activity.end
     const duration = endTime - startTime
-    const leftPercent = ((startTime - timeRange.start) / timeRange.duration) * 100
-    const widthPercent = (duration / timeRange.duration) * 100
-    const clampedLeft = Math.max(0, Math.min(100, leftPercent))
-    const clampedWidth = Math.min(100 - clampedLeft, widthPercent)
-    
-    // Use a smaller minimum for tiny durations (heartbeats/cron) 
-    // but let longer sessions show their true width
-    const minWidthPercent = duration < 5000 ? 0.3 : 0.5  // 0.3% for <5s, 0.5% for longer
-    
+
+    // Clamp to visible window
+    const visibleStart = Math.max(startTime, timeRange.start)
+    const visibleEnd = Math.min(endTime, timeRange.end)
+    const leftPercent = ((visibleStart - timeRange.start) / timeRange.duration) * 100
+    const widthPercent = ((visibleEnd - visibleStart) / timeRange.duration) * 100
+
+    const minWidthPercent = duration < 5000 ? 0.3 : 0.5
+
     return {
-      left: `${clampedLeft}%`,
-      width: `${Math.max(minWidthPercent, clampedWidth)}%`,
-      duration, // pass through for styling decisions
+      left: `${leftPercent}%`,
+      width: `${Math.max(minWidthPercent, widthPercent)}%`,
+      duration,
+      leftPercent,
+      widthPercent: Math.max(minWidthPercent, widthPercent),
     }
   }
+
+  // Build flattened activity list with lanes and parent-child relationships
+  const { flatActivities, rowLaneCounts, agentLaneCounts } = useMemo(() => {
+    const { activities, rowLaneCounts } = flattenActivitiesWithLanes(agentRows, activitiesByAgent, now)
+    const map = buildParentChildMap(activities)
+    
+    // Build agentId -> lane count map
+    const agentLaneCounts = new Map<string, number>()
+    agentRows.forEach((agentId, index) => {
+      agentLaneCounts.set(agentId, rowLaneCounts[index])
+    })
+    
+    return { flatActivities: activities, rowLaneCounts, agentLaneCounts }
+  }, [agentRows, activitiesByAgent, now])
+
+  // Calculate which activities are in the hovered chain
+  const hoveredChain = useMemo(() => {
+    if (!hoveredActivity) return new Set<string>()
+    
+    const chain = new Set<string>()
+    chain.add(hoveredActivity.sessionId)
+    
+    // Find children using flatActivities
+    const children = flatActivities.filter(a => a.activity.parentSessionId === hoveredActivity.sessionId)
+    children.forEach(child => chain.add(child.activity.sessionId))
+    
+    // Find parent
+    const parent = flatActivities.find(a => a.activity.sessionId === hoveredActivity.parentSessionId)
+    if (parent) {
+      chain.add(parent.activity.sessionId)
+      // Also mark the parent's other children
+      const siblings = flatActivities.filter(a => a.activity.parentSessionId === parent.activity.sessionId)
+      siblings.forEach(sibling => chain.add(sibling.activity.sessionId))
+    }
+    
+    return chain
+  }, [hoveredActivity, flatActivities])
+
+  // Generate connection paths with lane-based positioning
+  const connectionPaths = useMemo(() => {
+    const paths: Array<{
+      id: string
+      d: string
+      isInHoveredChain: boolean
+      parentStatus: string
+    }> = []
+
+    // Constants for dynamic row heights
+    const compactRowHeight = 40
+    const expandedRowHeight = 56
+    const laneHeight = 22
+    const laneGap = 4
+
+    // Build cumulative row offsets based on actual row heights
+    const rowOffsets: number[] = []
+    let cumulativeOffset = 0
+    for (let i = 0; i < agentRows.length; i++) {
+      rowOffsets.push(cumulativeOffset)
+      const laneCount = rowLaneCounts[i] || 1
+      const rowHeight = laneCount === 1 ? compactRowHeight : expandedRowHeight + (laneCount - 1) * (laneHeight + laneGap)
+      cumulativeOffset += rowHeight
+    }
+
+    flatActivities.forEach(({ activity, rowIndex, laneIndex }) => {
+      if (!activity.parentSessionId) return
+
+      const parent = findParent(flatActivities, activity.parentSessionId)
+      if (!parent) return
+
+      const parentStyle = getActivityStyle(parent.activity)
+      const childStyle = getActivityStyle(activity)
+
+      // Calculate lane-based positions
+      const laneCenterOffset = 11 // Center within lane (half of laneHeight is 11)
+
+      // Parent row calculation
+      const parentLaneCount = rowLaneCounts[parent.rowIndex] || 1
+      const parentBaseOffset = parentLaneCount === 1 ? (compactRowHeight - laneHeight) / 2 : (expandedRowHeight - laneHeight) / 2
+      const parentRowOffset = rowOffsets[parent.rowIndex]
+      const parentY = parentRowOffset + (parent.laneIndex * (laneHeight + laneGap)) + parentBaseOffset + laneCenterOffset + 10 // +10 for header
+
+      // Child position
+      const childLaneCount = rowLaneCounts[rowIndex] || 1
+      const childBaseOffset = childLaneCount === 1 ? (compactRowHeight - laneHeight) / 2 : (expandedRowHeight - laneHeight) / 2
+      const childRowOffset = rowOffsets[rowIndex]
+      const childY = childRowOffset + (laneIndex * (laneHeight + laneGap)) + childBaseOffset + laneCenterOffset + 10 // +10 for header
+
+      // Calculate x positions
+      const parentX = parentStyle.leftPercent + parentStyle.widthPercent
+      const childX = childStyle.leftPercent
+
+      // Create bezier curve
+      const controlPointOffset = Math.min(20, Math.abs(childX - parentX) / 2)
+
+      const d = `M ${parentX},${parentY} C ${parentX + controlPointOffset},${parentY} ${childX - controlPointOffset},${childY} ${childX},${childY}`
+
+      const isInHoveredChain = hoveredChain.has(activity.sessionId) ||
+                               hoveredChain.has(parent.activity.sessionId)
+
+      paths.push({
+        id: `${parent.activity.sessionId}-${activity.sessionId}`,
+        d,
+        isInHoveredChain,
+        parentStatus: parent.activity.status,
+      })
+    })
+
+    return paths
+  }, [flatActivities, hoveredChain, timeRange, now, agentRows, rowLaneCounts])
 
   if (isEmpty) {
     return (
@@ -89,10 +306,10 @@ export function TimelineChart({
 
   return (
     <>
-      <div className="min-w-[800px] bg-neutral-900/30 rounded-lg border border-neutral-800 overflow-hidden select-none">
+      <div ref={chartRef} className="min-w-[800px] bg-neutral-900/30 rounded-lg border border-neutral-800 overflow-hidden select-none relative">
         {/* Time header */}
         <div className="flex border-b border-neutral-800 bg-neutral-900/50">
-          <div className="w-24 sm:w-32 shrink-0 p-3 text-xs font-medium text-neutral-500 border-r border-neutral-800 bg-neutral-900/50 sticky left-0 z-10">
+          <div className="w-24 sm:w-32 shrink-0 p-3 text-xs font-medium text-neutral-500 border-r border-neutral-800 bg-neutral-900/50 sticky left-0 z-20">
             Agent
           </div>
           <div className="flex-1 relative h-10">
@@ -115,21 +332,69 @@ export function TimelineChart({
         </div>
 
         {/* Agent rows */}
-        <div className="divide-y divide-neutral-800/50">
-          {agentRows.map(agentId => {
+        <div className="divide-y divide-neutral-800/50 relative">
+          {agentRows.map((agentId, agentIndex) => {
+            // Check if this row starts a new group
+            const group = agentGroups.find(g => g.startIndex === agentIndex)
             const activities = activitiesByAgent.get(agentId) || []
             const agentColor = getAgentColor(agentId)
+            const laneCount = rowLaneCounts[agentIndex] || 1
+            // Dynamic row height: compact for single lane, expandable for multiple
+            const compactRowHeight = 40
+            const expandedRowHeight = 56
+            const laneHeight = 22
+            const laneGap = 4
+            const rowHeight = laneCount === 1 
+              ? compactRowHeight 
+              : expandedRowHeight + (laneCount - 1) * (laneHeight + laneGap)
+
+            // Get lane assignments for this agent
+            const laneMap = assignLanes(activities, now)
+
             return (
-              <div key={agentId} className="flex hover:bg-neutral-800/20 transition-colors">
-                <div className="w-24 sm:w-32 shrink-0 p-3 flex items-center gap-2 border-r border-neutral-800 bg-neutral-900/30 sticky left-0 z-10">
+              <div key={agentId} className="relative">
+                {group && agentGroups.length > 0 && (
+                  <div className="flex border-b border-neutral-800/50">
+                    <div className="w-24 sm:w-32 shrink-0 px-3 py-2 flex items-center gap-2 border-r border-neutral-800 bg-gradient-to-r from-neutral-800/50 to-neutral-900/30 sticky left-0 z-20">
+                      <div className="w-5 h-5 rounded-md bg-neutral-700/50 flex items-center justify-center">
+                        {group.name === 'Standalone' ? (
+                          <Bot className="w-3 h-3 text-neutral-400" />
+                        ) : (
+                          <Users className="w-3 h-3 text-indigo-400" />
+                        )}
+                      </div>
+                      <span className="text-[11px] font-semibold text-neutral-300 truncate">{group.name}</span>
+                      <span className="text-[10px] text-neutral-500 ml-auto">{group.count}</span>
+                    </div>
+                    <div className="flex-1 bg-gradient-to-r from-neutral-800/10 to-transparent">
+                      <div className="h-full flex items-center px-3">
+                        <div className="flex items-center gap-1.5">
+                          {Array.from({ length: Math.min(group.count, 8) }).map((_, i) => (
+                            <div
+                              key={i}
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                group.name === 'Standalone' ? 'bg-neutral-600' : 'bg-indigo-500/60'
+                              }`}
+                            />
+                          ))}
+                          {group.count > 8 && (
+                            <span className="text-[9px] text-neutral-600">+{group.count - 8}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div className="flex hover:bg-neutral-800/20 transition-colors" style={{ height: `${rowHeight}px` }}>
+                <div className="w-24 sm:w-32 shrink-0 p-3 flex items-center gap-1.5 border-r border-neutral-800 bg-neutral-900/30 sticky left-0 z-20" title={getAgentName(agentId)}>
                   <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: agentColor }} />
-                  <span className="text-sm font-medium text-neutral-300 truncate">{getAgentName(agentId)}</span>
+                  <span className="text-xs font-medium text-neutral-300 truncate">{getAgentName(agentId)}</span>
                   {activities.some(a => a.status === 'active') && (
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                   )}
                 </div>
 
-                <div className="flex-1 relative h-14 bg-neutral-950/30">
+                <div className="flex-1 relative bg-neutral-950/30 overflow-hidden" style={{ height: `${rowHeight}px` }}>
                   {timeGridLines.map(time => (
                     <div
                       key={time}
@@ -140,90 +405,94 @@ export function TimelineChart({
 
                   {activities.map(activity => {
                     const { duration, ...style } = getActivityStyle(activity)
+                    const laneIndex = laneMap.get(activity.sessionId) || 0
                     const isHovered = hoveredActivity?.sessionId === activity.sessionId
+                    const isInChain = hoveredChain.has(activity.sessionId)
                     const activityType = getActivityType(activity)
                     const typeColors = getActivityTypeColor(activityType)
                     const TypeIcon = TYPE_ICONS[activityType]
 
-                    // Visual distinction: very short activities get a different shape
-                    const isVeryShort = duration < 10000 // < 10 seconds
+                    // Calculate vertical position based on lane - centered in available space
+                    const baseOffset = laneCount === 1 ? (compactRowHeight - laneHeight) / 2 : (expandedRowHeight - laneHeight) / 2
+                    const laneTopOffset = laneIndex * (laneHeight + laneGap) + baseOffset
 
                     return (
                       <div
                         key={activity.sessionId}
                         className={`
-                          absolute top-1/2 -translate-y-1/2 rounded cursor-pointer
+                          absolute rounded cursor-pointer overflow-hidden
                           transition-all duration-200 border
-                          ${isHovered ? 'z-10 ring-2 ring-white/20 scale-y-110' : 'z-0'}
-                          ${isVeryShort ? 'h-4' : 'h-6'}
+                          ${isHovered ? 'z-10 ring-2 ring-white/20 scale-105' : 'z-0'}
+                          ${isInChain && !isHovered ? 'z-5 ring-1 ring-white/10' : ''}
                         `}
                         style={{
                           ...style,
+                          top: `${laneTopOffset}px`,
+                          height: `${laneHeight}px`,
                           backgroundColor: activity.status === 'active'
                             ? typeColors.bg.replace('0.2', '0.4')
                             : activity.status === 'aborted'
                               ? 'rgba(239, 68, 68, 0.2)'
                               : typeColors.bg,
-                          borderColor: activity.status === 'active'
-                            ? typeColors.text
-                            : activity.status === 'aborted'
-                              ? '#ef4444'
-                              : typeColors.border,
-                          // No minWidth - let the percentage do its job
+                          borderColor: isInChain || isHovered
+                            ? '#ffffff'
+                            : activity.status === 'active'
+                              ? typeColors.text
+                              : activity.status === 'aborted'
+                                ? '#ef4444'
+                                : typeColors.border,
+                          borderWidth: isInChain || isHovered ? '2px' : '1px',
                         }}
                         onMouseEnter={() => onHover(activity)}
                         onMouseLeave={() => onHover(null)}
                         onClick={() => onSelect(activity)}
                       >
-                        {activity.status === 'active' && (
-                          <div className="absolute left-1 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                        )}
-                        {parseFloat(style.width) > 8 && (
-                          <div className="absolute inset-0 flex items-center px-2 gap-1.5">
-                            <TypeIcon className="w-3 h-3 shrink-0" color={typeColors.text} />
-                            <span className="text-[10px] truncate text-neutral-200">
-                              {activity.label.slice(0, 25)}
+                        <div className="absolute inset-0 flex items-center px-1.5 gap-1 overflow-hidden min-w-0">
+                          {activity.status === 'active' && (
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                          )}
+                          <TypeIcon className="w-3 h-3 shrink-0" color={typeColors.text} />
+                          {parseFloat(style.width) > 3 && (
+                            <span className="text-[10px] text-neutral-200 overflow-hidden text-ellipsis whitespace-nowrap min-w-0">
+                              {activity.label}
                             </span>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
                     )
                   })}
                 </div>
               </div>
+            </div>
             )
           })}
         </div>
+
+        {/* Parent-child connection lines */}
+        <svg
+          className="absolute pointer-events-none z-20"
+          style={{ top: '40px', left: '128px', width: 'calc(100% - 128px)' }}
+          viewBox={`0 0 100 ${rowLaneCounts.reduce((sum, count) => {
+            const rowHeight = count === 1 ? 40 : 56 + (count - 1) * 26
+            return sum + rowHeight
+          }, 0)}`}
+          preserveAspectRatio="none"
+        >
+          {connectionPaths.map(path => (
+            <path
+              key={path.id}
+              d={path.d}
+              fill="none"
+              stroke={path.isInHoveredChain ? '#60a5fa' : '#475569'}
+              strokeWidth={path.isInHoveredChain ? 2 : 1}
+              strokeOpacity={path.isInHoveredChain ? 1 : 0.3}
+              strokeDasharray={path.parentStatus === 'active' ? '0' : '4 2'}
+              className="transition-all duration-200"
+            />
+          ))}
+        </svg>
       </div>
 
-      {/* Legend */}
-      <div className="mt-4 flex flex-wrap items-center gap-4 text-xs">
-        <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-indigo-500/20 border border-indigo-500/50">
-          <Heart className="w-3 h-3 text-indigo-400" />
-          <span className="text-indigo-300">Heartbeat</span>
-        </div>
-        <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-amber-500/20 border border-amber-500/50">
-          <Calendar className="w-3 h-3 text-amber-400" />
-          <span className="text-amber-300">Cron Job</span>
-        </div>
-        <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-violet-500/20 border border-violet-500/50">
-          <Zap className="w-3 h-3 text-violet-400" />
-          <span className="text-violet-300">Sub-agent</span>
-        </div>
-        <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-emerald-500/20 border border-emerald-500/50">
-          <Circle className="w-3 h-3 text-emerald-400" />
-          <span className="text-emerald-300">Session</span>
-        </div>
-        <div className="w-px h-6 bg-neutral-800" />
-        <div className="flex items-center gap-2 text-neutral-500">
-          <div className="w-3 h-3 rounded bg-emerald-500/30 border border-emerald-500" />
-          <span>Active</span>
-        </div>
-        <div className="flex items-center gap-2 text-neutral-500">
-          <div className="w-3 h-3 rounded bg-red-500/30 border border-red-500" />
-          <span>Aborted</span>
-        </div>
-      </div>
     </>
   )
 }

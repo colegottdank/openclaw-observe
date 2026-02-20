@@ -31,13 +31,22 @@ export function TimelineTooltip({ activity, mousePos, now }: TimelineTooltipProp
   const colors = getActivityTypeColor(type)
   const TypeIcon = TYPE_ICONS[type]
 
+  const tooltipWidth = 280
+  const tooltipHeight = 160
+  const gap = 16
+
+  // Flip horizontally if too close to right edge
+  const flipX = mousePos.x + gap + tooltipWidth > window.innerWidth - 20
+  const left = flipX ? mousePos.x - 8 - tooltipWidth : mousePos.x + gap
+
+  // Flip vertically if in lower half of viewport
+  const flipY = mousePos.y > window.innerHeight / 2
+  const top = flipY ? mousePos.y - gap - tooltipHeight : mousePos.y + gap
+
   return (
     <div
       className="fixed z-50 pointer-events-none bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl p-3 min-w-[260px]"
-      style={{
-        left: Math.min(mousePos.x + 12, window.innerWidth - 280),
-        top: Math.min(mousePos.y + 12, window.innerHeight - 180)
-      }}
+      style={{ left, top }}
     >
       <div className="flex items-center gap-2 mb-2">
         <Bot className="w-4 h-4" color={getAgentColor(activity.agentId)} />

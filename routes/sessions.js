@@ -9,6 +9,28 @@ import { createCache } from '../lib/cache.js'
 const router = Router()
 const sessionCache = createCache(5000)
 
+// --- Mock session logs ---
+let mockSessionLogs = {}
+
+router.post('/api/sessions/mock', async (req, res) => {
+  try {
+    const fixturePath = new URL('../fixtures/mock-sessions.json', import.meta.url).pathname
+    mockSessionLogs = JSON.parse(await fs.readFile(fixturePath, 'utf-8'))
+    console.log(`[mock] Loaded mock logs for ${Object.keys(mockSessionLogs).length} sessions`)
+    res.json({ loaded: Object.keys(mockSessionLogs).length })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+router.delete('/api/sessions/mock', (req, res) => {
+  const count = Object.keys(mockSessionLogs).length
+  mockSessionLogs = {}
+  console.log(`[mock] Cleared mock session logs`)
+  res.json({ cleared: count })
+})
+
+
 async function readFirstUserMessage(filePath) {
   try {
     const fileStream = createReadStream(filePath)
@@ -122,6 +144,14 @@ router.get('/api/sessions/:agentId/:sessionId', async (req, res) => {
   if (!/^[a-zA-Z0-9-_]+$/.test(agentId) || !/^[a-zA-Z0-9-]+$/.test(sessionId)) {
     return res.status(400).json({ error: 'Invalid ID format' })
   }
+
+  // Check mock data first
+  if (mockSessionLogs[sessionId]) {
+    const jsonl = mockSessionLogs[sessionId].map(e => JSON.stringify(e)).join('\n')
+    res.set('Cache-Control', 'no-cache')
+    return res.type('text/plain').send(jsonl)
+  }
+
   const sessionPath = path.resolve(AGENTS_ROOT, agentId, 'sessions', `${sessionId}.jsonl`)
   if (!sessionPath.startsWith(path.resolve(AGENTS_ROOT))) {
     return res.status(403).json({ error: 'Access denied' })

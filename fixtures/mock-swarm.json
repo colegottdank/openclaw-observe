@@ -1,0 +1,68 @@
+{
+  "description": "Mock swarm activity for testing delegation tree UI",
+  "activities": [
+    {
+      "agentId": "test-leader",
+      "sessionId": "run-001-leader",
+      "parentSessionId": null,
+      "start": -300000,
+      "end": -10000,
+      "label": "Refactor authentication module",
+      "status": "completed"
+    },
+    {
+      "agentId": "test-backend",
+      "sessionId": "run-001-backend",
+      "parentSessionId": "run-001-leader",
+      "start": -270000,
+      "end": -60000,
+      "label": "Update API routes and middleware",
+      "status": "completed"
+    },
+    {
+      "agentId": "test-frontend",
+      "sessionId": "run-001-frontend",
+      "parentSessionId": "run-001-leader",
+      "start": -260000,
+      "end": -30000,
+      "label": "Update login and signup components",
+      "status": "completed"
+    },
+    {
+      "agentId": "test-reviewer",
+      "sessionId": "run-001-reviewer",
+      "parentSessionId": "run-001-leader",
+      "start": -50000,
+      "end": -15000,
+      "label": "Review changes and run test suite",
+      "status": "completed"
+    },
+    {
+      "agentId": "test-leader",
+      "sessionId": "run-002-leader",
+      "parentSessionId": null,
+      "start": -120000,
+      "end": null,
+      "label": "Add rate limiting to public endpoints",
+      "status": "active"
+    },
+    {
+      "agentId": "test-backend",
+      "sessionId": "run-002-backend",
+      "parentSessionId": "run-002-leader",
+      "start": -90000,
+      "end": null,
+      "label": "Implement rate limiter middleware",
+      "status": "active"
+    },
+    {
+      "agentId": "test-frontend",
+      "sessionId": "run-002-frontend",
+      "parentSessionId": "run-002-leader",
+      "start": -80000,
+      "end": -40000,
+      "label": "Add rate limit error handling to UI",
+      "status": "completed"
+    }
+  ]
+}

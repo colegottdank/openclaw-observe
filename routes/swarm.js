@@ -8,27 +8,78 @@ import { ROOT_DIR, AGENTS_ROOT } from '../lib/paths.js'
 
 const router = Router()
 
-/** Read the first line of a JSONL session file to extract metadata */
+// --- Mock data for testing ---
+let mockActivities = []
+
+// Load mock data from fixture file
+router.post('/api/swarm/mock', async (req, res) => {
+  try {
+    const fixturePath = new URL('../fixtures/mock-swarm.json', import.meta.url).pathname
+    const data = JSON.parse(await fs.readFile(fixturePath, 'utf-8'))
+    const now = Date.now()
+
+    // Resolve relative timestamps (negative = ms before now, null = active/now)
+    mockActivities = data.activities.map(a => ({
+      ...a,
+      start: now + a.start,
+      end: a.end === null ? now : now + a.end,
+    }))
+
+    console.log(`[mock] Loaded ${mockActivities.length} mock activities`)
+    res.json({ loaded: mockActivities.length })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Clear mock data
+router.delete('/api/swarm/mock', (req, res) => {
+  const count = mockActivities.length
+  mockActivities = []
+  console.log(`[mock] Cleared ${count} mock activities`)
+  res.json({ cleared: count })
+})
+
+// Check mock status
+router.get('/api/swarm/mock', (req, res) => {
+  res.json({ count: mockActivities.length, activities: mockActivities })
+})
+
+/** Read first line (metadata) and last line (real end time) of a JSONL session file */
 async function readSessionMeta(filePath) {
   try {
+    // Read first line for metadata (parentSessionId, createdAt)
     const stream = createReadStream(filePath)
     const rl = createInterface({ input: stream, crlfDelay: Infinity })
+    let firstEntry = null
     for await (const line of rl) {
-      try {
-        const entry = JSON.parse(line)
-        rl.close()
-        stream.destroy()
-        return {
-          parentSessionId: entry.parentSessionId || null,
-          createdAt: entry.timestamp ? new Date(entry.timestamp).getTime() : null,
-        }
-      } catch {}
+      try { firstEntry = JSON.parse(line) } catch {}
+      rl.close()
+      stream.destroy()
       break
     }
-    rl.close()
-    stream.destroy()
+
+    // Read last line efficiently via tail for real end time
+    const lastActivityAt = await new Promise((resolve) => {
+      const tail = spawn('tail', ['-1', filePath])
+      let output = ''
+      tail.stdout.on('data', d => output += d.toString())
+      tail.on('close', () => {
+        try {
+          const entry = JSON.parse(output.trim())
+          resolve(entry.timestamp ? new Date(entry.timestamp).getTime() : null)
+        } catch { resolve(null) }
+      })
+      tail.on('error', () => resolve(null))
+    })
+
+    return {
+      parentSessionId: firstEntry?.parentSessionId || null,
+      createdAt: firstEntry?.timestamp ? new Date(firstEntry.timestamp).getTime() : null,
+      lastActivityAt,
+    }
   } catch {}
-  return { parentSessionId: null, createdAt: null }
+  return { parentSessionId: null, createdAt: null, lastActivityAt: null }
 }
 
 router.get('/api/gateway/logs', async (req, res) => {
@@ -79,11 +130,14 @@ router.get('/api/swarm/activity', async (req, res) => {
         const sessions = JSON.parse(data)
         Object.entries(sessions).forEach(([key, session]) => {
           const end = session.updatedAt
-          if (end >= windowStart) {
+          // Be generous here — real start comes from JSONL, post-filter handles overlap
+          if (end >= windowStart || session.active) {
             let label = session.label || 'Unknown task'
             if (label === 'Unknown task' && key.includes(':')) {
               label = key.split(':').slice(2).join(':').replace(/^(discord|channel):?/, '')
             }
+            // Truncate long channel IDs to last 4 digits
+            label = label.replace(/\b(\d{8,})\b/g, (m) => `#${m.slice(-4)}`)
             let status = 'completed'
             if (session.active || (now - end) < 60000) status = 'active'
             else if (session.abortedLastRun) status = 'aborted'
@@ -97,8 +151,16 @@ router.get('/api/swarm/activity', async (req, res) => {
               parentLookups.push(
                 readSessionMeta(jsonlPath).then(meta => {
                   activity.parentSessionId = meta.parentSessionId
-                  if (meta.createdAt && meta.createdAt <= activity.end) {
+                  if (meta.createdAt) {
                     activity.start = meta.createdAt
+                  }
+                  // Use last JSONL timestamp as real end time (sessions.json updatedAt is unreliable for cron jobs)
+                  if (meta.lastActivityAt && meta.lastActivityAt > activity.end) {
+                    activity.end = meta.lastActivityAt
+                  }
+                  // Re-evaluate status with corrected end time
+                  if (!session.active && activity.status !== 'aborted') {
+                    activity.status = (now - activity.end) < 60000 ? 'active' : 'completed'
                   }
                 })
               )
@@ -111,8 +173,29 @@ router.get('/api/swarm/activity', async (req, res) => {
     // Resolve parent session IDs in parallel
     await Promise.all(parentLookups)
 
-    activities.sort((a, b) => b.start - a.start)
-    res.json({ activities, window: { start: windowStart, end: now, hours: windowHours } })
+    // Deduplicate by sessionId (cron jobs create both a schedule entry and a run entry)
+    const seen = new Map()
+    for (const a of activities) {
+      if (!a.sessionId) continue
+      const existing = seen.get(a.sessionId)
+      if (!existing || a.label !== 'Unknown task') {
+        seen.set(a.sessionId, a)
+      }
+    }
+    const deduped = Array.from(seen.values())
+
+    // Filter: keep activities that overlap with the time window (now that we have real start times)
+    const filtered = deduped.filter(a => a.end >= windowStart && a.start <= now)
+
+    // Merge mock activities (if any)
+    for (const mock of mockActivities) {
+      if (mock.end >= windowStart && mock.start <= now) {
+        filtered.push(mock)
+      }
+    }
+
+    filtered.sort((a, b) => b.start - a.start)
+    res.json({ activities: filtered, window: { start: windowStart, end: now, hours: windowHours } })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

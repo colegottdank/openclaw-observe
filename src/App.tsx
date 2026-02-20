@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Link, Route, Switch, useLocation } from 'wouter'
+import { Link, Route, Switch, useLocation, Redirect } from 'wouter'
 import {
-	LayoutDashboard,
 	Users,
 	Menu,
 	X,
@@ -14,7 +13,6 @@ import {
 // Components
 import { AgentDetail } from './components/AgentDetail'
 import { Layout } from './components/Layout'
-import { Overview } from './components/Overview'
 import { AgentsList } from './components/AgentsList'
 import { LogsPage } from './components/LogsPage'
 import { NotFound } from './components/NotFound'
@@ -24,10 +22,9 @@ import { useAgents, useGatewayStatus } from './hooks'
 import { ErrorBoundary } from './components/ui'
 
 const NAV_ITEMS = [
-	{ label: 'Overview', path: '/', icon: LayoutDashboard },
-	{ label: 'Timeline', path: '/timeline', icon: Clock },
-	{ label: 'Sessions', path: '/sessions', icon: ScrollText },
+	{ label: 'Timeline', path: '/', icon: Clock },
 	{ label: 'Agents', path: '/agents', icon: Users },
+	{ label: 'Sessions', path: '/sessions', icon: ScrollText },
 	{ label: 'Logs', path: '/logs', icon: Terminal },
 ]
 
@@ -211,11 +208,11 @@ export default function App() {
 					</Route>
 
 					<Route path="/">
-						<Layout><Overview /></Layout>
+						<Layout><TimelinePage /></Layout>
 					</Route>
 
 					<Route path="/timeline">
-						<Layout><TimelinePage /></Layout>
+						<Redirect to={`/${window.location.search}`} />
 					</Route>
 
 					<Route path="/sessions">

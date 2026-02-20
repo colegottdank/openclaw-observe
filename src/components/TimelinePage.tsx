@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
+import { useLocation } from 'wouter'
 import {
   Activity,
   X,
@@ -7,15 +8,17 @@ import {
   Zap
 } from 'lucide-react'
 import { useAgents, useSwarmActivity, useSessionLogs } from '../hooks'
-import { normalizeAgentId, getAgentName, getActivityType, getActivityTypeColor } from '../utils/agents'
+import { normalizeAgentId, getAgentName, getActivityType, getActivityTypeColor, groupAgentsBySwarm } from '../utils/agents'
 import { formatTime } from '../utils/time'
 import { SessionTraceViewer } from './SessionTraceViewer'
 import { TimelineChart } from './TimelineChart'
 import { TimelineTooltip, TYPE_ICONS, TYPE_LABELS } from './TimelineTooltip'
+import { RunOverview } from './RunOverview'
 import { ResizablePanel, StatusBadge } from './ui'
 import type { SwarmActivity } from '../types'
 
 export function TimelinePage() {
+  const [, setLocation] = useLocation()
   const [windowHours, setWindowHours] = useState(1)
   const [hoveredActivity, setHoveredActivity] = useState<SwarmActivity | null>(null)
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
@@ -39,21 +42,50 @@ export function TimelinePage() {
     return () => clearInterval(interval)
   }, [])
 
-  const agentRows = useMemo(() => {
-    const knownIds = (agents || []).map(a => a.id)
-    const seen = new Set(knownIds)
+  const { agentRows, agentGroups } = useMemo(() => {
+    const agentList = agents || []
+    const { swarms, standalone } = groupAgentsBySwarm(agentList)
 
-    if (data?.activities) {
-      for (const activity of data.activities) {
-        const id = normalizeAgentId(activity.agentId)
-        if (!seen.has(id)) {
-          knownIds.push(id)
-          seen.add(id)
-        }
+    // Build ordered rows: swarm groups first, then standalone, then unknown from activities
+    const ordered: string[] = []
+    const groups: { name: string; startIndex: number; count: number }[] = []
+    const seen = new Set<string>()
+
+    for (const swarm of swarms) {
+      const startIndex = ordered.length
+      const ids = [swarm.leader.id, ...swarm.members.map(m => m.id)]
+      ids.forEach(id => { ordered.push(id); seen.add(id) })
+      groups.push({ name: swarm.name, startIndex, count: ids.length })
+    }
+
+    // Standalone agents
+    const standaloneIds = standalone.map(a => a.id)
+    if (standaloneIds.length > 0) {
+      const startIndex = ordered.length
+      standaloneIds.forEach(id => { ordered.push(id); seen.add(id) })
+      if (swarms.length > 0) {
+        groups.push({ name: 'Standalone', startIndex, count: standaloneIds.length })
       }
     }
 
-    return knownIds
+    // Add any agents from activities not in config
+    if (data?.activities) {
+      const unknownStart = ordered.length
+      let unknownCount = 0
+      for (const activity of data.activities) {
+        const id = normalizeAgentId(activity.agentId)
+        if (!seen.has(id)) {
+          ordered.push(id)
+          seen.add(id)
+          unknownCount++
+        }
+      }
+      if (unknownCount > 0 && swarms.length > 0) {
+        groups.push({ name: 'Other', startIndex: unknownStart, count: unknownCount })
+      }
+    }
+
+    return { agentRows: ordered, agentGroups: groups }
   }, [agents, data])
 
   const activitiesByAgent = useMemo(() => {
@@ -89,12 +121,29 @@ export function TimelinePage() {
   const closeSidebar = () => {
     setSidebarOpen(false)
     setSelectedActivity(null)
+    setLocation('/')
   }
 
   const handleSelectActivity = (activity: SwarmActivity) => {
     setSelectedActivity(activity)
     setSidebarOpen(true)
+    const agentId = normalizeAgentId(activity.agentId)
+    setLocation(`/?agent=${encodeURIComponent(agentId)}&session=${encodeURIComponent(activity.sessionId)}`)
   }
+
+  // Restore sidebar from URL params on load
+  useEffect(() => {
+    if (!data?.activities) return
+    const params = new URLSearchParams(window.location.search)
+    const sessionId = params.get('session')
+    if (!sessionId || selectedActivity) return
+
+    const match = data.activities.find(a => a.sessionId === sessionId)
+    if (match) {
+      setSelectedActivity(match)
+      setSidebarOpen(true)
+    }
+  }, [data])
 
   const stats = useMemo(() => {
     const activities = data?.activities || []
@@ -200,7 +249,17 @@ export function TimelinePage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-4">
+          {/* Legend */}
+          <div className="hidden lg:flex items-center gap-3 text-[11px] text-neutral-500">
+            <span className="flex items-center gap-1.5"><Heart className="w-3 h-3 text-indigo-400" />Heartbeat</span>
+            <span className="flex items-center gap-1.5"><Calendar className="w-3 h-3 text-amber-400" />Cron</span>
+            <span className="flex items-center gap-1.5"><Zap className="w-3 h-3 text-violet-400" />Sub-agent</span>
+            <span className="flex items-center gap-1.5"><Activity className="w-3 h-3 text-emerald-400" />Session</span>
+          </div>
+
+          <div className="hidden lg:block w-px h-6 bg-neutral-800" />
+
           {/* Time range selector */}
           <div className="flex items-center bg-neutral-800/50 rounded-lg p-0.5 border border-neutral-800">
             {[0.5, 1, 3, 6, 12, 24].map(hours => (
@@ -228,6 +287,7 @@ export function TimelinePage() {
       >
         <TimelineChart
           agentRows={agentRows}
+          agentGroups={agentGroups}
           activitiesByAgent={activitiesByAgent}
           timeRange={timeRange}
           timeGridLines={timeGridLines}
@@ -250,65 +310,47 @@ export function TimelinePage() {
 
       {/* Session Log Sidebar */}
       <ResizablePanel open={sidebarOpen} onClose={closeSidebar} storageKey="timeline" defaultWidth={480}>
-        <div className="flex items-center justify-between p-4 border-b border-neutral-800 shrink-0">
-          <div className="flex items-center gap-3">
-            {selectedActivity && (() => {
-              const type = getActivityType(selectedActivity)
-              const TypeIcon = TYPE_ICONS[type]
-              return (
+        {selectedActivity && (() => {
+          const type = getActivityType(selectedActivity)
+          const colors = getActivityTypeColor(type)
+          const TypeIcon = TYPE_ICONS[type]
+          return (
+            <div className="px-4 py-3 border-b border-neutral-800 bg-neutral-900/50 shrink-0">
+              <div className="flex items-center gap-3">
                 <div
-                  className="w-10 h-10 rounded-lg flex items-center justify-center"
-                  style={{ backgroundColor: getActivityTypeColor(type).bg }}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                  style={{ backgroundColor: colors.bg }}
                 >
-                  <TypeIcon className="w-5 h-5" color={getActivityTypeColor(type).text} />
+                  <TypeIcon className="w-4 h-4" color={colors.text} />
                 </div>
-              )
-            })()}
-            <div>
-              <h3 className="font-medium text-white">{selectedActivity && TYPE_LABELS[getActivityType(selectedActivity)]} Log</h3>
-              <p className="text-xs text-neutral-500">{selectedActivity && getAgentName(selectedActivity.agentId)}</p>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-white truncate">{selectedActivity.label}</div>
+                  <div className="flex items-center gap-2 text-xs text-neutral-500 mt-0.5">
+                    <span>{getAgentName(selectedActivity.agentId)}</span>
+                    <span>·</span>
+                    <StatusBadge status={selectedActivity.status} />
+                    <span>·</span>
+                    <span>{formatTime(selectedActivity.start)} → {selectedActivity.status === 'active' ? 'Now' : formatTime(selectedActivity.end)}</span>
+                  </div>
+                </div>
+                <button
+                  onClick={closeSidebar}
+                  className="p-1.5 rounded-md text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
-          </div>
+          )
+        })()}
 
-          <button
-            onClick={closeSidebar}
-            className="p-2 rounded-md text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {selectedActivity && (
-          <div className="p-4 border-b border-neutral-800 bg-neutral-900/50 shrink-0">
-            <div className="text-sm text-neutral-300 mb-3">
-              <span className="text-neutral-500">Goal:</span> {selectedActivity.label}
-            </div>
-
-            <div className="flex items-center gap-3 text-xs">
-              {(() => {
-                const type = getActivityType(selectedActivity)
-                const colors = getActivityTypeColor(type)
-                const TypeIcon = TYPE_ICONS[type]
-                return (
-                  <span
-                    className="px-2 py-0.5 rounded flex items-center gap-1"
-                    style={{ backgroundColor: colors.bg, color: colors.text }}
-                  >
-                    <TypeIcon className="w-3 h-3" color={colors.text} />
-                    {TYPE_LABELS[type]}
-                  </span>
-                )
-              })()}
-              <StatusBadge status={selectedActivity.status} />
-              <span className="text-neutral-500">
-                {formatTime(selectedActivity.start)} &rarr; {selectedActivity.status === 'active' ? 'Now' : formatTime(selectedActivity.end)}
-              </span>
-            </div>
-
-            <div className="mt-3 text-[10px] text-neutral-600 font-mono">
-              Session ID: {selectedActivity.sessionId}
-            </div>
-          </div>
+        {/* Run Overview - Shows delegation chain for root sessions */}
+        {selectedActivity && data?.activities && (
+          <RunOverview
+            activities={data.activities}
+            selectedActivity={selectedActivity}
+            onSelectActivity={handleSelectActivity}
+          />
         )}
 
         <SessionTraceViewer logs={sessionLogs || []} loading={logsLoading} />
