@@ -1,33 +1,26 @@
 # Reef — OpenClaw Swarm Observability
 
 ## Project
-- **Location**: `/Users/spud/.openclaw/openclaw-observe/`
-- **API server**: port 3179 (`node server.js`)
 - **Stack**: Express 5, React 19, Vite 7, TypeScript 5.9, Tailwind 4, wouter, ESM
+- **API server**: port 3179 (`node server.js`)
+- **Plugin**: OpenClaw plugin via `plugin.js` + `openclaw.plugin.json`
 - **CLI**: `cli/reef.js` — globally linked as `reef`, zero deps (native fetch + ANSI formatting)
 
 ## Architecture
-- `server.js` — Express API on port 3179
+- `plugin.js` — OpenClaw plugin entry point (registerService lifecycle)
+- `server.js` — Express API (importable module with createApp/createServer, or standalone)
 - `routes/` — agents.js, sessions.js, swarm.js, gateway.js, files.js
-- `lib/paths.js` — ROOT_DIR, AGENTS_ROOT, CONFIG_PATH, CHANNEL_MAP
+- `lib/paths.js` — Configurable paths via env vars (REEF_DATA_DIR, REEF_CONFIG_PATH)
 - `lib/cache.js` — simple TTL cache
 - `src/` — React frontend (Vite)
 - `cli/reef.js` — CLI tool (commands: agents, sessions, timeline, status, logs, config)
 
-## Pending Work
+## Configuration
+All paths are configurable via environment variables:
+- `REEF_DATA_DIR` — OpenClaw data directory (default: ~/.openclaw)
+- `REEF_CONFIG_PATH` — Config file path (default: ~/.openclaw/clawdbot.json)
+- `REEF_PORT` — Server port (default: 3179)
+- `REEF_HOST` — Bind address (default: 127.0.0.1)
 
-### Kill Overview page, make Timeline the landing page
-The Overview page (`src/components/Overview.tsx`) is redundant:
-- Its "Agent Fleet" panel is identical to the Agents page (same `AgentCard`, same `groupAgentsBySwarm`)
-- Its 4 KPI stat cards don't add value beyond what Timeline already shows
-- The split layout has an empty right 1/3 panel
-
-**Plan**: Remove Overview entirely. Change the `/` route in `App.tsx` to render `TimelinePage` instead. Remove Overview from `NAV_ITEMS`. Delete `src/components/Overview.tsx`.
-
-Files to touch:
-- `src/App.tsx` — change `/` route from `<Overview />` to `<TimelinePage />`, remove Overview from NAV_ITEMS and imports
-- `src/components/Overview.tsx` — delete
-
-### CLI minor issues (low priority)
-- Emoji column alignment: `🎛️` on Control agent shifts row slightly (emoji display width != char count)
-- Sessions context column shows raw Discord channel IDs when CHANNEL_MAP doesn't cover them (API-side gap in `lib/paths.js`)
+## Known Issues (low priority)
+- Emoji column alignment in CLI: wide emoji chars shift row alignment slightly

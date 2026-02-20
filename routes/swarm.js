@@ -194,7 +194,8 @@ router.get('/api/swarm/activity', async (req, res) => {
     filtered.sort((a, b) => b.start - a.start)
     res.json({ activities: filtered, window: { start: windowStart, end: now, hours: windowHours } })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    console.error('Error fetching swarm activity:', err)
+    res.status(500).json({ error: 'Failed to fetch swarm activity' })
   }
 })
 

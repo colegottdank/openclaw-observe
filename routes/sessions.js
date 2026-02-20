@@ -165,6 +165,10 @@ router.get('/api/sessions/:agentId/:sessionId', async (req, res) => {
       return res.status(304).end()
     }
 
+    // Cap session file reads at 50MB
+    if (stat.size > 50 * 1024 * 1024) {
+      return res.status(413).json({ error: 'Session log too large' })
+    }
     const content = await fs.readFile(sessionPath, 'utf-8')
     res.set('Last-Modified', lastModified)
     res.set('Cache-Control', 'no-cache')

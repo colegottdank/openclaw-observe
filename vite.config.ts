@@ -7,7 +7,7 @@ const apiTarget = `http://localhost:${process.env.REEF_PORT || 3179}`
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    host: '0.0.0.0',
+    host: '127.0.0.1',
     proxy: {
       '/api': {
         target: apiTarget,
@@ -17,7 +17,7 @@ export default defineConfig({
     },
   },
   preview: {
-    host: '0.0.0.0',
+    host: '127.0.0.1',
     port: 4173,
     proxy: {
       '/api': {

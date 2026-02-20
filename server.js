@@ -29,6 +29,7 @@ export function createApp() {
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
       }
     }
+    res.setHeader('Vary', 'Origin')
     if (req.method === 'OPTIONS') return res.sendStatus(204)
     next()
   })

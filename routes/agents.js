@@ -79,7 +79,7 @@ router.get('/api/agents', async (req, res) => {
     res.json(agentList)
   } catch (err) {
     console.error('Error fetching agents:', err)
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: 'Failed to fetch agents' })
   }
 })
 

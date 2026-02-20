@@ -211,7 +211,12 @@ export function SessionTraceViewer({ logs, loading = false }: SessionTraceViewer
       if (block.type === 'text') {
         return (
           <div key={i} className="trace-markdown text-sm text-neutral-300">
-            <Markdown>{block.text || ''}</Markdown>
+            <Markdown components={{
+              a: ({href, children, ...props}: React.AnchorHTMLAttributes<HTMLAnchorElement> & {children?: React.ReactNode}) => {
+                if (href && /^(javascript|data|vbscript):/i.test(href)) return <span>{children}</span>
+                return <a href={href} rel="noopener noreferrer" target="_blank" {...props}>{children}</a>
+              }
+            }}>{block.text || ''}</Markdown>
           </div>
         )
       }
