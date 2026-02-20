@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { Terminal, RefreshCw, Search, Radio } from 'lucide-react'
 import { useGatewayStatus, useLogs } from '../hooks'
-import { StatCard } from './ui'
+import { SimpleSelect } from './ui'
 
 export function LogsPage() {
   const [live, setLive] = useState(true)
@@ -57,99 +57,97 @@ export function LogsPage() {
 
   return (
     <div className="flex flex-col h-full bg-neutral-950 text-neutral-300">
-      {/* HEADER */}
-      <div className="border-b border-neutral-900 p-4 lg:p-6 bg-neutral-900/20 space-y-4">
-        <div className="flex flex-col lg:flex-row justify-between items-start gap-4">
+      {/* Header */}
+      <div className="border-b border-neutral-900 p-4 bg-neutral-900/20 shrink-0">
+        <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-2xl font-bold text-white mb-1">System Logs</h1>
-            <p className="text-neutral-500 text-sm">
+            <div className="flex items-center gap-3">
+              <h1 className="text-xl font-bold text-white">System Logs</h1>
+              {live && (
+                <span className="text-xs px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 rounded text-emerald-400">
+                  Live
+                </span>
+              )}
+            </div>
+            <p className="text-neutral-500 text-sm mt-0.5">
               {filteredLogs.length} entries{logs && filteredLogs.length !== logs.length ? ` (of ${logs.length})` : ''}
             </p>
           </div>
 
-          <div className="flex gap-2 items-center flex-wrap">
-            {/* Live mode toggle */}
-            <button
-              onClick={() => setLive(l => !l)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-mono uppercase tracking-wider transition-colors border ${
-                live
-                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                  : 'text-neutral-500 border-transparent hover:bg-neutral-900 hover:text-neutral-300'
-              }`}
-            >
-              <Radio className={`w-3 h-3 ${live ? 'animate-pulse' : ''}`} />
-              Live
-            </button>
-
-            <div className="h-8 w-px bg-neutral-800" />
-
-            <button
-              onClick={refetch}
-              className="p-2 rounded-md bg-neutral-800 text-neutral-400 hover:text-white transition-colors"
-              title="Refresh"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </button>
-            <div className="h-8 w-px bg-neutral-800" />
-
-            {/* Level filter */}
-            {(['all', 'error', 'warn', 'info'] as const).map(f => (
-              <button
-                key={f}
-                onClick={() => setLevelFilter(f)}
-                className={`px-3 py-1.5 rounded-md text-xs font-mono uppercase tracking-wider transition-colors border ${
-                  levelFilter === f
-                    ? 'bg-neutral-800 text-white border-neutral-700'
-                    : 'text-neutral-500 border-transparent hover:bg-neutral-900 hover:text-neutral-300'
-                }`}
-              >
-                {f}
-              </button>
-            ))}
-
-            {/* Source filter */}
-            {sources.length > 1 && (
+          <div className="flex items-center gap-6">
+            <div className="text-right">
+              <div className="text-2xl font-bold text-white">{filteredLogs.length}</div>
+              <div className="text-xs text-neutral-500">Entries</div>
+            </div>
+            {status && (
               <>
-                <div className="h-8 w-px bg-neutral-800" />
-                <select
-                  value={sourceFilter}
-                  onChange={e => setSourceFilter(e.target.value)}
-                  className="bg-neutral-800 border border-neutral-700 rounded-md text-xs text-neutral-300 px-2 py-1.5 font-mono"
-                >
-                  <option value="all">all sources</option>
-                  {sources.map(s => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
+                <div className="w-px h-10 bg-neutral-800" />
+                <div className="text-right">
+                  <div className={`text-2xl font-bold ${status.status === 'online' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    {status.status === 'online' ? 'Online' : 'Degraded'}
+                  </div>
+                  <div className="text-xs text-neutral-500">v{status.version || '?'}</div>
+                </div>
               </>
             )}
           </div>
         </div>
 
-        {/* Search bar */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-600" />
-          <input
-            type="text"
-            placeholder="Search logs..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full bg-neutral-900 border border-neutral-800 rounded-lg pl-10 pr-4 py-2 text-sm text-neutral-300 placeholder-neutral-600 focus:outline-none focus:border-neutral-700"
-          />
-        </div>
-
-        {status && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard
-              label="Gateway Status"
-              value={status.status?.toUpperCase() || 'UNKNOWN'}
-              color={status.status === 'online' ? 'text-emerald-500' : 'text-amber-500'}
+        {/* Filters */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative flex-1 max-w-sm">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
+            <input
+              type="text"
+              placeholder="Search logs..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full bg-neutral-900 border border-neutral-800 rounded-lg py-2 pl-9 pr-3 text-sm text-neutral-300 placeholder:text-neutral-600 focus:outline-none focus:border-neutral-700 transition-colors"
             />
-            <StatCard label="Version" value={status.version || 'Unknown'} />
-            <StatCard label="Memory" value={status.memoryUsage || '-'} />
-            <StatCard label="Uptime" value={status.uptime || '-'} />
           </div>
-        )}
+
+          {/* Level filter */}
+          {(['all', 'error', 'warn', 'info'] as const).map(f => (
+            <button
+              key={f}
+              onClick={() => setLevelFilter(f)}
+              className={`px-3 py-2 rounded-md text-xs font-mono uppercase tracking-wider transition-colors border ${
+                levelFilter === f
+                  ? 'bg-neutral-800 text-white border-neutral-700'
+                  : 'text-neutral-500 border-transparent hover:bg-neutral-900 hover:text-neutral-300'
+              }`}
+            >
+              {f}
+            </button>
+          ))}
+
+          {/* Source filter */}
+          {sources.length > 1 && (
+            <>
+              <div className="h-8 w-px bg-neutral-800" />
+              <SimpleSelect
+                value={sourceFilter}
+                options={[
+                  { value: 'all', label: 'All Sources' },
+                  ...sources.map(s => ({ value: s, label: s }))
+                ]}
+                onChange={setSourceFilter}
+                className="w-40"
+              />
+            </>
+          )}
+
+          <div className="flex-1" />
+
+          <button
+            onClick={refetch}
+            className="flex items-center gap-2 px-3 py-2 rounded-md bg-neutral-800 text-neutral-400 hover:text-white transition-colors"
+            title="Refresh"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <span className="text-xs">Refresh</span>
+          </button>
+        </div>
       </div>
 
       {/* LOGS TERMINAL VIEW */}

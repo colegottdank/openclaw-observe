@@ -1,24 +1,51 @@
 import { useAgents } from '../hooks'
 import { AgentCard } from './AgentCard'
 import { groupAgentsBySwarm } from '../utils/agents'
-import { Users, Bot, Crown } from 'lucide-react'
+import { Users, Bot, Crown, Activity } from 'lucide-react'
 
 export function AgentsList() {
   const { data: agents } = useAgents()
   const agentList = agents || []
   const { swarms, standalone } = groupAgentsBySwarm(agentList)
 
+  const activeAgentCount = agentList.filter(a => a.status === 'active' || a.status === 'busy').length
+
   return (
-    <div className="p-4 lg:p-6 max-w-7xl mx-auto space-y-8">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
-          <Bot className="w-5 h-5 text-indigo-400" />
-        </div>
+    <div className="h-full bg-neutral-950 text-neutral-300 flex flex-col overflow-hidden">
+      {/* Header */}
+      <div className="border-b border-neutral-900 p-4 bg-neutral-900/20 flex items-center justify-between shrink-0">
         <div>
-          <h2 className="text-xl font-bold text-white">Agents</h2>
-          <p className="text-xs text-neutral-500">{agentList.length} total agents across {swarms.length} swarms</p>
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-bold text-white">Agents</h1>
+            {activeAgentCount > 0 && (
+              <span className="text-xs px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 rounded text-emerald-400">
+                {activeAgentCount} active
+              </span>
+            )}
+          </div>
+          <p className="text-neutral-500 text-sm mt-0.5">
+            {agentList.length} total agents across {swarms.length} swarms
+          </p>
+        </div>
+
+        <div className="flex items-center gap-6">
+          <div className="text-right">
+            <div className="text-2xl font-bold text-white">{agentList.length}</div>
+            <div className="text-xs text-neutral-500">Total</div>
+          </div>
+          <div className="w-px h-10 bg-neutral-800" />
+          <div className="text-right">
+            <div className="flex items-center gap-1.5 text-emerald-400 justify-end">
+              <Activity className="w-4 h-4" />
+              <span className="text-2xl font-bold">{activeAgentCount}</span>
+            </div>
+            <div className="text-xs text-neutral-500">Active</div>
+          </div>
         </div>
       </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-auto p-4 lg:p-6 space-y-8">
 
       {/* Swarm groups */}
       {swarms.map((swarm) => (
@@ -84,11 +111,12 @@ export function AgentsList() {
       )}
 
       {agentList.length === 0 && (
-        <div className="text-center py-12 text-neutral-500">
-          <Bot className="w-12 h-12 mx-auto mb-4 opacity-30" />
+        <div className="flex-1 flex flex-col items-center justify-center text-neutral-500">
+          <Bot className="w-12 h-12 mb-4 opacity-30" />
           <p>No agents configured</p>
         </div>
       )}
+      </div>
     </div>
   )
 }

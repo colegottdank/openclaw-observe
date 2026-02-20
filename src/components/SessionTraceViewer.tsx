@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
+import Markdown from 'react-markdown'
 import {
   ArrowDownCircle,
   Search,
@@ -6,6 +7,7 @@ import {
   MessageSquare,
   ChevronDown,
   ChevronRight,
+  Brain,
 } from 'lucide-react'
 import { formatTimeFull } from '../utils/time'
 import type { SessionLogEntry, SessionContentBlock } from '../types'
@@ -33,19 +35,15 @@ function groupIntoTurns(logs: SessionLogEntry[]): Turn[] {
     const role = entry.message?.role
 
     if (role === 'user') {
-      // User messages always start a new turn
       current = { role: 'user', entries: [entry], index: i }
       turns.push(current)
     } else if (role === 'assistant') {
-      // Assistant messages start a new assistant turn
       current = { role: 'assistant', entries: [entry], index: i }
       turns.push(current)
     } else {
-      // Tool results, tool_use, tool_result, etc. — nest under current assistant turn
       if (current && current.role === 'assistant') {
         current.entries.push(entry)
       } else {
-        // Orphaned tool entry (no preceding assistant) — wrap it in its own turn
         current = { role: 'assistant', entries: [entry], index: i }
         turns.push(current)
       }
@@ -55,11 +53,44 @@ function groupIntoTurns(logs: SessionLogEntry[]): Turn[] {
   return turns
 }
 
+/** Get a one-line summary for known tool inputs instead of raw JSON */
+function getToolSummary(toolName: string | undefined, input: unknown): string | null {
+  if (!toolName || !input || typeof input !== 'object') return null
+  const inp = input as Record<string, unknown>
+
+  switch (toolName) {
+    case 'Read':
+    case 'read':
+      return inp.file_path ? `${inp.file_path}` : null
+    case 'Edit':
+    case 'edit':
+      return inp.file_path ? `${inp.file_path}` : null
+    case 'Write':
+    case 'write':
+      return inp.file_path ? `${inp.file_path}` : null
+    case 'Bash':
+    case 'bash':
+    case 'exec':
+      return inp.command ? `$ ${String(inp.command).slice(0, 120)}` : null
+    case 'Grep':
+    case 'grep':
+      return inp.pattern ? `/${inp.pattern}/${inp.path ? ` in ${inp.path}` : ''}` : null
+    case 'Glob':
+    case 'glob':
+      return inp.pattern ? `${inp.pattern}${inp.path ? ` in ${inp.path}` : ''}` : null
+    case 'delegate':
+      return inp.agent ? `\u2192 ${inp.agent}${inp.task ? `: ${String(inp.task).slice(0, 80)}` : ''}` : null
+    default:
+      return null
+  }
+}
+
 export function SessionTraceViewer({ logs, loading = false }: SessionTraceViewerProps) {
   const [filter, setFilter] = useState<FilterMode>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [collapsedTools, setCollapsedTools] = useState<Set<number>>(new Set())
   const [collapsedTurns, setCollapsedTurns] = useState<Set<number>>(new Set())
+  const [expandedThinking, setExpandedThinking] = useState<Set<number>>(new Set())
   const logContainerRef = useRef<HTMLDivElement>(null)
   const userHasScrolled = useRef(false)
   const prevLogCount = useRef(0)
@@ -87,6 +118,13 @@ export function SessionTraceViewer({ logs, loading = false }: SessionTraceViewer
     setCollapsedTurns(next)
   }
 
+  const toggleThinking = (key: number) => {
+    const next = new Set(expandedThinking)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    setExpandedThinking(next)
+  }
+
   const handleScroll = () => {
     if (!logContainerRef.current) return
     const { scrollTop, scrollHeight, clientHeight } = logContainerRef.current
@@ -100,14 +138,11 @@ export function SessionTraceViewer({ logs, loading = false }: SessionTraceViewer
       userHasScrolled.current = false
       return
     }
-    // Scroll to bottom on initial load (first time logs appear)
     if (prevLogCount.current === 0) {
-      // Small delay to ensure DOM is rendered
       setTimeout(() => scrollToBottom(true), 50)
       prevLogCount.current = logs.length
       return
     }
-    // Auto-scroll on new messages if user hasn't manually scrolled up
     if (logs.length > prevLogCount.current && !userHasScrolled.current) {
       scrollToBottom(true)
     }
@@ -132,11 +167,8 @@ export function SessionTraceViewer({ logs, loading = false }: SessionTraceViewer
     if (filter === 'user') return turn.role === 'user'
     if (filter === 'error') {
       return turn.entries.some(e => {
-        // Explicit error type
         if (e.type === 'error') return true
-        // Tool marked as error
         if (e.type === 'tool_result' && e.isError) return true
-        // Tool output containing error structure (not just the word)
         const output = typeof e.output === 'string' ? e.output : JSON.stringify(e.output)
         if (output && (
           output.includes('"error":') ||
@@ -150,20 +182,41 @@ export function SessionTraceViewer({ logs, loading = false }: SessionTraceViewer
     return true
   }
 
-  const renderContentBlocks = (blocks: SessionContentBlock[]) => {
+  const renderContentBlocks = (blocks: SessionContentBlock[], turnIndex: number) => {
     return blocks.map((block, i) => {
       if (block.type === 'thinking') {
+        const thinkingKey = turnIndex * 1000 + 900 + i
+        const isExpanded = expandedThinking.has(thinkingKey)
+        const preview = block.thinking?.slice(0, 80)?.replace(/\n/g, ' ') || ''
         return (
-          <div key={i} className="text-neutral-500 italic border-l-2 border-neutral-700 pl-3 py-1 text-xs">
-            {block.thinking}
-          </div>
+          <button
+            key={i}
+            onClick={() => toggleThinking(thinkingKey)}
+            className="w-full text-left border border-neutral-800 rounded bg-neutral-900/50 hover:bg-neutral-800/50 transition-colors"
+          >
+            <div className="flex items-center gap-2 px-3 py-1.5 text-xs">
+              {isExpanded ? <ChevronDown size={10} className="text-neutral-500 shrink-0" /> : <ChevronRight size={10} className="text-neutral-500 shrink-0" />}
+              <Brain size={12} className="text-neutral-500 shrink-0" />
+              <span className="text-neutral-500 font-medium">Thinking</span>
+              {!isExpanded && <span className="text-neutral-600 truncate">{preview}</span>}
+            </div>
+            {isExpanded && (
+              <div className="px-3 pb-2 text-xs text-neutral-500 italic whitespace-pre-wrap border-t border-neutral-800/50 mt-1 pt-2 max-h-48 overflow-y-auto">
+                {block.thinking}
+              </div>
+            )}
+          </button>
         )
       }
       if (block.type === 'text') {
-        return <div key={i} className="whitespace-pre-wrap">{block.text}</div>
+        return (
+          <div key={i} className="trace-markdown text-sm text-neutral-300">
+            <Markdown>{block.text || ''}</Markdown>
+          </div>
+        )
       }
       if (block.type === 'toolCall') {
-        return null // Tool calls are rendered as nested items below
+        return null
       }
       return <div key={i} className="text-neutral-600 text-xs">{JSON.stringify(block)}</div>
     })
@@ -174,23 +227,27 @@ export function SessionTraceViewer({ logs, loading = false }: SessionTraceViewer
     const isCollapsed = collapsedTools.has(idx)
     const role = entry.message?.role
 
-    // Tool call (from assistant content blocks or standalone tool_use)
+    // Tool call
     if (entry.type === 'tool_use' || (entry.tool && entry.input)) {
       const toolName = entry.tool || entry.name
       const toolInput = entry.input || entry.args
+      const summary = getToolSummary(toolName, toolInput)
+      const isDelegation = toolName === 'delegate'
+
       return (
-        <div key={idx} className="border-l-2 border-amber-500/40 bg-neutral-900/30 rounded-r-sm">
+        <div key={idx} className={`border-l-2 ${isDelegation ? 'border-violet-500/40' : 'border-amber-500/40'} bg-neutral-900/30 rounded-r-sm`}>
           <button
             onClick={() => toggleToolCollapse(idx)}
             className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-neutral-800/30 transition-colors"
           >
-            {isCollapsed ? <ChevronRight size={10} className="text-amber-500 shrink-0" /> : <ChevronDown size={10} className="text-amber-500 shrink-0" />}
-            <span className="font-bold text-amber-500">Tool:</span>
-            <span className="font-mono text-amber-200/80">{toolName}</span>
-            {timeStr && <span className="text-[9px] font-mono text-neutral-600 ml-auto">{timeStr}</span>}
+            {isCollapsed ? <ChevronRight size={10} className={`${isDelegation ? 'text-violet-500' : 'text-amber-500'} shrink-0`} /> : <ChevronDown size={10} className={`${isDelegation ? 'text-violet-500' : 'text-amber-500'} shrink-0`} />}
+            <span className={`font-bold ${isDelegation ? 'text-violet-500' : 'text-amber-500'}`}>{isDelegation ? 'Delegate:' : 'Tool:'}</span>
+            <span className={`font-mono ${isDelegation ? 'text-violet-200/80' : 'text-amber-200/80'}`}>{toolName}</span>
+            {summary && <span className="text-neutral-400 truncate flex-1 text-left font-mono">{summary}</span>}
+            {timeStr && <span className="text-[9px] font-mono text-neutral-600 ml-auto shrink-0">{timeStr}</span>}
           </button>
           {!isCollapsed && (
-            <pre className="px-3 pb-2 text-xs font-mono text-amber-200/60 whitespace-pre-wrap break-all overflow-x-auto">
+            <pre className="px-3 pb-2 text-xs font-mono text-amber-200/60 whitespace-pre-wrap break-all overflow-x-hidden">
               {typeof toolInput === 'string' ? toolInput : JSON.stringify(toolInput, null, 2)}
             </pre>
           )}
@@ -198,7 +255,7 @@ export function SessionTraceViewer({ logs, loading = false }: SessionTraceViewer
       )
     }
 
-    // Tool result (standalone or toolResult role)
+    // Tool result
     if (entry.type === 'tool_result' || entry.output || role === 'toolResult' || role === 'tool') {
       let outputContent: string
       if (role === 'toolResult' || role === 'tool') {
@@ -215,6 +272,25 @@ export function SessionTraceViewer({ logs, loading = false }: SessionTraceViewer
         outputContent = typeof out === 'string' ? out : JSON.stringify(out, null, 2)
       }
 
+      // Compact success messages
+      const isShortSuccess = outputContent.length < 80 && (
+        outputContent.includes('success') ||
+        outputContent.includes('updated') ||
+        outputContent.includes('created') ||
+        outputContent.includes('File ') ||
+        outputContent.includes('added ')
+      )
+
+      if (isShortSuccess) {
+        return (
+          <div key={idx} className="flex items-center gap-2 px-3 py-1 text-xs">
+            <span className="text-emerald-500/70">\u2713</span>
+            <span className="text-emerald-200/60 font-mono">{outputContent}</span>
+            {timeStr && <span className="text-[9px] font-mono text-neutral-600 ml-auto">{timeStr}</span>}
+          </div>
+        )
+      }
+
       return (
         <div key={idx} className="border-l-2 border-emerald-500/40 bg-neutral-900/30 rounded-r-sm">
           <button
@@ -223,11 +299,11 @@ export function SessionTraceViewer({ logs, loading = false }: SessionTraceViewer
           >
             {isCollapsed ? <ChevronRight size={10} className="text-emerald-500 shrink-0" /> : <ChevronDown size={10} className="text-emerald-500 shrink-0" />}
             <span className="font-bold text-emerald-500">Output</span>
-            {!isCollapsed && <span className="text-neutral-600 font-mono truncate flex-1 text-left">{outputContent.slice(0, 60)}</span>}
+            {isCollapsed && <span className="text-neutral-600 font-mono truncate flex-1 text-left">{outputContent.slice(0, 80)}</span>}
             {timeStr && <span className="text-[9px] font-mono text-neutral-600 ml-auto shrink-0">{timeStr}</span>}
           </button>
           {!isCollapsed && (
-            <pre className="px-3 pb-2 text-xs font-mono text-emerald-200/60 whitespace-pre-wrap break-all overflow-x-auto max-h-64 overflow-y-auto">
+            <pre className="px-3 pb-2 text-xs font-mono text-emerald-200/60 whitespace-pre-wrap break-all overflow-x-hidden max-h-64 overflow-y-auto">
               {outputContent}
             </pre>
           )}
@@ -259,7 +335,7 @@ export function SessionTraceViewer({ logs, loading = false }: SessionTraceViewer
             <div className="shrink-0">
               <span className="text-[10px] font-bold uppercase text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">User</span>
             </div>
-            <div className="flex-1 text-sm font-mono text-neutral-300 whitespace-pre-wrap min-w-0">{text}</div>
+            <div className="flex-1 text-sm text-neutral-300 whitespace-pre-wrap min-w-0">{text}</div>
             {timeStr && <span className="text-[9px] font-mono text-neutral-600 shrink-0">{timeStr}</span>}
           </div>
         </div>
@@ -271,7 +347,6 @@ export function SessionTraceViewer({ logs, loading = false }: SessionTraceViewer
     const toolEntries = turn.entries.slice(1)
     const isTurnCollapsed = collapsedTurns.has(turn.index)
 
-    // Extract text and tool call blocks from the primary assistant message
     const content = primaryEntry.message?.content
     let blocks: SessionContentBlock[] = []
     if (typeof content === 'string') {
@@ -287,7 +362,6 @@ export function SessionTraceViewer({ logs, loading = false }: SessionTraceViewer
       e.type === 'tool_use' || (e.tool && e.input)
     ).length
 
-    // If primary entry is itself a tool entry (orphaned), render differently
     const isPrimaryTool = !primaryEntry.message?.role || primaryEntry.message?.role === 'toolResult' || primaryEntry.message?.role === 'tool' || primaryEntry.type === 'tool_use' || primaryEntry.type === 'tool_result'
     if (isPrimaryTool) {
       return (
@@ -316,34 +390,37 @@ export function SessionTraceViewer({ logs, loading = false }: SessionTraceViewer
             )}
             {timeStr && <span className="text-[9px] font-mono text-neutral-600 ml-auto shrink-0">{timeStr}</span>}
           </div>
-          <div className="text-sm font-mono text-neutral-300 space-y-2 ml-0">
-            {renderContentBlocks(textBlocks)}
+          <div className="space-y-2 ml-0">
+            {renderContentBlocks(textBlocks, turn.index)}
           </div>
         </div>
 
         {/* Nested tool calls + results */}
         {hasToolActivity && !isTurnCollapsed && (
           <div className="border-t border-neutral-800/50 mx-3 mb-3 pt-2 space-y-1">
-            {/* Inline tool calls from assistant content blocks */}
-            {toolCallBlocks.map((block, i) => (
-              <div key={`tc-${i}`} className="border-l-2 border-amber-500/40 bg-neutral-900/30 rounded-r-sm">
-                <button
-                  onClick={() => toggleToolCollapse(turn.index * 1000 + i)}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-neutral-800/30 transition-colors"
-                >
-                  {collapsedTools.has(turn.index * 1000 + i) ? <ChevronRight size={10} className="text-amber-500 shrink-0" /> : <ChevronDown size={10} className="text-amber-500 shrink-0" />}
-                  <span className="font-bold text-amber-500">Tool:</span>
-                  <span className="font-mono text-amber-200/80">{block.name}</span>
-                </button>
-                {!collapsedTools.has(turn.index * 1000 + i) && (
-                  <pre className="px-3 pb-2 text-xs font-mono text-amber-200/60 whitespace-pre-wrap break-all overflow-x-auto">
-                    {typeof block.arguments === 'string' ? block.arguments : JSON.stringify(block.arguments, null, 2)}
-                  </pre>
-                )}
-              </div>
-            ))}
+            {toolCallBlocks.map((block, i) => {
+              const summary = getToolSummary(block.name, block.arguments)
+              const isDelegation = block.name === 'delegate'
+              return (
+                <div key={`tc-${i}`} className={`border-l-2 ${isDelegation ? 'border-violet-500/40' : 'border-amber-500/40'} bg-neutral-900/30 rounded-r-sm`}>
+                  <button
+                    onClick={() => toggleToolCollapse(turn.index * 1000 + i)}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-neutral-800/30 transition-colors"
+                  >
+                    {collapsedTools.has(turn.index * 1000 + i) ? <ChevronRight size={10} className={`${isDelegation ? 'text-violet-500' : 'text-amber-500'} shrink-0`} /> : <ChevronDown size={10} className={`${isDelegation ? 'text-violet-500' : 'text-amber-500'} shrink-0`} />}
+                    <span className={`font-bold ${isDelegation ? 'text-violet-500' : 'text-amber-500'}`}>{isDelegation ? 'Delegate:' : 'Tool:'}</span>
+                    <span className={`font-mono ${isDelegation ? 'text-violet-200/80' : 'text-amber-200/80'}`}>{block.name}</span>
+                    {summary && <span className="text-neutral-400 truncate flex-1 text-left font-mono">{summary}</span>}
+                  </button>
+                  {!collapsedTools.has(turn.index * 1000 + i) && (
+                    <pre className="px-3 pb-2 text-xs font-mono text-amber-200/60 whitespace-pre-wrap break-all overflow-x-hidden">
+                      {typeof block.arguments === 'string' ? block.arguments : JSON.stringify(block.arguments, null, 2)}
+                    </pre>
+                  )}
+                </div>
+              )
+            })}
 
-            {/* Subsequent tool entries (tool_use, tool_result, toolResult messages) */}
             {toolEntries.map((entry, i) => renderToolEntry(entry, turn.index + 1 + i))}
           </div>
         )}

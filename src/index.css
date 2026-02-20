@@ -38,3 +38,47 @@ a:disabled,
 .scrollbar-thin::-webkit-scrollbar-thumb {
   @apply bg-neutral-700 rounded-full;
 }
+
+/* Markdown styling for session trace viewer */
+.trace-markdown p {
+  @apply mb-2 last:mb-0;
+}
+.trace-markdown strong {
+  @apply font-bold text-white;
+}
+.trace-markdown em {
+  @apply italic text-neutral-400;
+}
+.trace-markdown ul {
+  @apply list-disc pl-5 mb-2 space-y-1;
+}
+.trace-markdown ol {
+  @apply list-decimal pl-5 mb-2 space-y-1;
+}
+.trace-markdown li {
+  @apply text-neutral-300;
+}
+.trace-markdown code {
+  @apply font-mono text-xs bg-neutral-800 text-amber-200/80 px-1.5 py-0.5 rounded;
+}
+.trace-markdown pre {
+  @apply bg-neutral-900 border border-neutral-800 rounded-lg p-3 mb-2 overflow-x-auto;
+}
+.trace-markdown pre code {
+  @apply bg-transparent p-0 text-emerald-200/70;
+}
+.trace-markdown h1, .trace-markdown h2, .trace-markdown h3 {
+  @apply font-bold text-white mb-1;
+}
+.trace-markdown h1 { @apply text-base; }
+.trace-markdown h2 { @apply text-sm; }
+.trace-markdown h3 { @apply text-sm; }
+.trace-markdown blockquote {
+  @apply border-l-2 border-neutral-700 pl-3 text-neutral-400 italic mb-2;
+}
+.trace-markdown a {
+  @apply text-indigo-400 hover:text-indigo-300 underline;
+}
+.trace-markdown hr {
+  @apply border-neutral-800 my-3;
+}

@@ -1,5 +1,5 @@
 import { useLocation } from 'wouter'
-import { Terminal, Crown, AlertCircle } from 'lucide-react'
+import { Crown, AlertCircle } from 'lucide-react'
 import { StatusDot, STATUS_STYLES } from './ui'
 import { formatTimeAgo } from '../utils/time'
 import type { Agent } from '../types'
@@ -11,11 +11,6 @@ interface AgentCardProps {
 
 export function AgentCard({ agent, isLeader }: AgentCardProps) {
   const [, setLocation] = useLocation()
-
-  const handleSessionsClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    setLocation(`/agents/${agent.id}?tab=sessions`)
-  }
 
   const style = STATUS_STYLES[agent.status] || STATUS_STYLES.offline
 
@@ -75,16 +70,6 @@ export function AgentCard({ agent, isLeader }: AgentCardProps) {
         </div>
       </div>
 
-      {/* FOOTER ACTIONS - Only visible on hover */}
-      <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button
-          onClick={handleSessionsClick}
-          className="p-1.5 bg-neutral-800 hover:bg-neutral-700 rounded text-neutral-400 hover:text-white transition-colors border border-neutral-700"
-          title="Sessions"
-        >
-          <Terminal className="w-3.5 h-3.5" />
-        </button>
-      </div>
     </div>
   )
 }

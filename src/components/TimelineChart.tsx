@@ -1,4 +1,4 @@
-import { Clock, Users, Bot, CircleDot } from 'lucide-react'
+import { Clock, Users, Bot } from 'lucide-react'
 import { useMemo, useRef } from 'react'
 import { getAgentName, getAgentColor, getActivityType, getActivityTypeColor } from '../utils/agents'
 import { formatTime } from '../utils/time'
@@ -331,141 +331,255 @@ export function TimelineChart({
           </div>
         </div>
 
-        {/* Agent rows */}
-        <div className="divide-y divide-neutral-800/50 relative">
-          {agentRows.map((agentId, agentIndex) => {
-            // Check if this row starts a new group
-            const group = agentGroups.find(g => g.startIndex === agentIndex)
-            const activities = activitiesByAgent.get(agentId) || []
-            const agentColor = getAgentColor(agentId)
-            const laneCount = rowLaneCounts[agentIndex] || 1
-            // Dynamic row height: compact for single lane, expandable for multiple
-            const compactRowHeight = 40
-            const expandedRowHeight = 56
-            const laneHeight = 22
-            const laneGap = 4
-            const rowHeight = laneCount === 1 
-              ? compactRowHeight 
-              : expandedRowHeight + (laneCount - 1) * (laneHeight + laneGap)
-
-            // Get lane assignments for this agent
-            const laneMap = assignLanes(activities, now)
-
-            return (
-              <div key={agentId} className="relative">
-                {group && agentGroups.length > 0 && (
-                  <div className="flex border-b border-neutral-800/50">
-                    <div className="w-24 sm:w-32 shrink-0 px-3 py-2 flex items-center gap-2 border-r border-neutral-800 bg-gradient-to-r from-neutral-800/50 to-neutral-900/30 sticky left-0 z-20">
-                      <div className="w-5 h-5 rounded-md bg-neutral-700/50 flex items-center justify-center">
-                        {group.name === 'Standalone' ? (
-                          <Bot className="w-3 h-3 text-neutral-400" />
-                        ) : (
-                          <Users className="w-3 h-3 text-indigo-400" />
-                        )}
+        {/* Agent rows grouped by swarm */}
+        <div className="relative">
+          {agentGroups.length > 0 ? (
+            // Render with group containers
+            agentGroups.map((group, groupIndex) => {
+              const isStandalone = group.name === 'Standalone'
+              const accentColor = isStandalone ? 'text-neutral-400' : 'text-indigo-400'
+              const borderColor = isStandalone ? 'border-neutral-700/50' : 'border-indigo-500/30'
+              const leftBorder = isStandalone ? 'border-l-neutral-600' : 'border-l-indigo-500/50'
+              
+              return (
+                <div key={group.name} className={`relative ${groupIndex > 0 ? 'mt-2' : ''}`}>
+                  {/* Group container with enhanced styling */}
+                  <div className={`relative rounded-xl overflow-hidden border ${borderColor}`}>
+                    {/* Left accent border */}
+                    <div className={`absolute left-0 top-0 bottom-0 w-0.5 ${leftBorder}`} />
+                    
+                    {/* Group label */}
+                    <div className="flex border-b border-neutral-800/50 bg-neutral-900/30">
+                      <div className="w-24 sm:w-32 shrink-0 px-3 py-2 flex items-center gap-2 border-r border-neutral-800/50 sticky left-0 z-20">
+                        <div className={`w-5 h-5 rounded-md flex items-center justify-center ${isStandalone ? 'bg-neutral-800' : 'bg-indigo-500/20'}`}>
+                          {isStandalone ? (
+                            <Bot className="w-3 h-3 text-neutral-500" />
+                          ) : (
+                            <Users className="w-3 h-3 text-indigo-400" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className={`text-[11px] font-medium ${accentColor} truncate block`}>
+                            {group.name}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-neutral-600 font-medium">{group.count}</span>
                       </div>
-                      <span className="text-[11px] font-semibold text-neutral-300 truncate">{group.name}</span>
-                      <span className="text-[10px] text-neutral-500 ml-auto">{group.count}</span>
-                    </div>
-                    <div className="flex-1 bg-gradient-to-r from-neutral-800/10 to-transparent">
-                      <div className="h-full flex items-center px-3">
-                        <div className="flex items-center gap-1.5">
-                          {Array.from({ length: Math.min(group.count, 8) }).map((_, i) => (
+                      <div className="flex-1 flex items-center px-3">
+                        {/* Agent count dots */}
+                        <div className="flex items-center gap-1">
+                          {Array.from({ length: Math.min(group.count, 6) }).map((_, i) => (
                             <div
                               key={i}
-                              className={`w-1.5 h-1.5 rounded-full ${
-                                group.name === 'Standalone' ? 'bg-neutral-600' : 'bg-indigo-500/60'
-                              }`}
+                              className={`w-1.5 h-1.5 rounded-full ${isStandalone ? 'bg-neutral-700' : 'bg-indigo-500/40'}`}
                             />
                           ))}
-                          {group.count > 8 && (
-                            <span className="text-[9px] text-neutral-600">+{group.count - 8}</span>
+                          {group.count > 6 && (
+                            <span className="text-[9px] text-neutral-600 ml-0.5">+{group.count - 6}</span>
                           )}
                         </div>
                       </div>
                     </div>
+
+                    {/* Agent rows in this group */}
+                    <div className="divide-y divide-neutral-800/20">
+                      {agentRows.slice(group.startIndex, group.startIndex + group.count).map((agentId, idxInGroup) => {
+                        const agentIndex = group.startIndex + idxInGroup
+                        const activities = activitiesByAgent.get(agentId) || []
+                        const agentColor = getAgentColor(agentId)
+                        const laneCount = rowLaneCounts[agentIndex] || 1
+                        const compactRowHeight = 40
+                        const expandedRowHeight = 56
+                        const laneHeight = 22
+                        const laneGap = 4
+                        const rowHeight = laneCount === 1 
+                          ? compactRowHeight 
+                          : expandedRowHeight + (laneCount - 1) * (laneHeight + laneGap)
+                        const laneMap = assignLanes(activities, now)
+
+                        return (
+                          <div key={agentId} className="flex hover:bg-neutral-800/20 transition-colors relative" style={{ height: `${rowHeight}px` }}>
+                            <div className="w-24 sm:w-32 shrink-0 p-3 flex items-center gap-1.5 border-r border-neutral-800 bg-neutral-900/30 sticky left-0 z-20" title={getAgentName(agentId)}>
+                              <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: agentColor }} />
+                              <span className="text-xs font-medium text-neutral-300 truncate">{getAgentName(agentId)}</span>
+                              {activities.some(a => a.status === 'active') && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                              )}
+                            </div>
+
+                            <div className="flex-1 relative bg-neutral-950/30 overflow-hidden" style={{ height: `${rowHeight}px` }}>
+                              {timeGridLines.map(time => (
+                                <div
+                                  key={time}
+                                  className="absolute top-0 bottom-0 border-l border-neutral-800/20 pointer-events-none"
+                                  style={{ left: `${((time - timeRange.start) / timeRange.duration) * 100}%` }}
+                                />
+                              ))}
+
+                              {activities.map(activity => {
+                                const { duration, ...style } = getActivityStyle(activity)
+                                const laneIndex = laneMap.get(activity.sessionId) || 0
+                                const isHovered = hoveredActivity?.sessionId === activity.sessionId
+                                const isInChain = hoveredChain.has(activity.sessionId)
+                                const activityType = getActivityType(activity)
+                                const typeColors = getActivityTypeColor(activityType)
+                                const TypeIcon = TYPE_ICONS[activityType]
+
+                                const baseOffset = laneCount === 1 ? (compactRowHeight - laneHeight) / 2 : (expandedRowHeight - laneHeight) / 2
+                                const laneTopOffset = laneIndex * (laneHeight + laneGap) + baseOffset
+
+                                return (
+                                  <div
+                                    key={activity.sessionId}
+                                    className={`
+                                      absolute rounded cursor-pointer overflow-hidden
+                                      transition-all duration-200 border
+                                      ${isHovered ? 'z-10 ring-2 ring-white/20 scale-105' : 'z-0'}
+                                      ${isInChain && !isHovered ? 'z-5 ring-1 ring-white/10' : ''}
+                                    `}
+                                    style={{
+                                      ...style,
+                                      top: `${laneTopOffset}px`,
+                                      height: `${laneHeight}px`,
+                                      backgroundColor: activity.status === 'active'
+                                        ? typeColors.bg.replace('0.2', '0.4')
+                                        : activity.status === 'aborted'
+                                          ? 'rgba(239, 68, 68, 0.2)'
+                                          : typeColors.bg,
+                                      borderColor: isInChain || isHovered
+                                        ? '#ffffff'
+                                        : activity.status === 'active'
+                                          ? typeColors.text
+                                          : activity.status === 'aborted'
+                                            ? '#ef4444'
+                                            : typeColors.border,
+                                      borderWidth: isInChain || isHovered ? '2px' : '1px',
+                                    }}
+                                    onMouseEnter={() => onHover(activity)}
+                                    onMouseLeave={() => onHover(null)}
+                                    onClick={() => onSelect(activity)}
+                                  >
+                                    <div className="absolute inset-0 flex items-center px-1.5 gap-1 overflow-hidden min-w-0">
+                                      {activity.status === 'active' && (
+                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                                      )}
+                                      <TypeIcon className="w-3 h-3 shrink-0" color={typeColors.text} />
+                                      {parseFloat(style.width) > 3 && (
+                                        <span className="text-[10px] text-neutral-200 overflow-hidden text-ellipsis whitespace-nowrap min-w-0">
+                                          {activity.label}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
-                )}
-                <div className="flex hover:bg-neutral-800/20 transition-colors" style={{ height: `${rowHeight}px` }}>
-                <div className="w-24 sm:w-32 shrink-0 p-3 flex items-center gap-1.5 border-r border-neutral-800 bg-neutral-900/30 sticky left-0 z-20" title={getAgentName(agentId)}>
-                  <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: agentColor }} />
-                  <span className="text-xs font-medium text-neutral-300 truncate">{getAgentName(agentId)}</span>
-                  {activities.some(a => a.status === 'active') && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                  )}
                 </div>
+              )
+            })
+          ) : (
+            // Render without groups (fallback)
+            <div className="divide-y divide-neutral-800/50">
+              {agentRows.map((agentId, agentIndex) => {
+                const activities = activitiesByAgent.get(agentId) || []
+                const agentColor = getAgentColor(agentId)
+                const laneCount = rowLaneCounts[agentIndex] || 1
+                const compactRowHeight = 40
+                const expandedRowHeight = 56
+                const laneHeight = 22
+                const laneGap = 4
+                const rowHeight = laneCount === 1 
+                  ? compactRowHeight 
+                  : expandedRowHeight + (laneCount - 1) * (laneHeight + laneGap)
+                const laneMap = assignLanes(activities, now)
 
-                <div className="flex-1 relative bg-neutral-950/30 overflow-hidden" style={{ height: `${rowHeight}px` }}>
-                  {timeGridLines.map(time => (
-                    <div
-                      key={time}
-                      className="absolute top-0 bottom-0 border-l border-neutral-800/20 pointer-events-none"
-                      style={{ left: `${((time - timeRange.start) / timeRange.duration) * 100}%` }}
-                    />
-                  ))}
+                return (
+                  <div key={agentId} className="flex hover:bg-neutral-800/20 transition-colors" style={{ height: `${rowHeight}px` }}>
+                    <div className="w-24 sm:w-32 shrink-0 p-3 flex items-center gap-1.5 border-r border-neutral-800 bg-neutral-900/30 sticky left-0 z-20" title={getAgentName(agentId)}>
+                      <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: agentColor }} />
+                      <span className="text-xs font-medium text-neutral-300 truncate">{getAgentName(agentId)}</span>
+                      {activities.some(a => a.status === 'active') && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                      )}
+                    </div>
 
-                  {activities.map(activity => {
-                    const { duration, ...style } = getActivityStyle(activity)
-                    const laneIndex = laneMap.get(activity.sessionId) || 0
-                    const isHovered = hoveredActivity?.sessionId === activity.sessionId
-                    const isInChain = hoveredChain.has(activity.sessionId)
-                    const activityType = getActivityType(activity)
-                    const typeColors = getActivityTypeColor(activityType)
-                    const TypeIcon = TYPE_ICONS[activityType]
+                    <div className="flex-1 relative bg-neutral-950/30 overflow-hidden" style={{ height: `${rowHeight}px` }}>
+                      {timeGridLines.map(time => (
+                        <div
+                          key={time}
+                          className="absolute top-0 bottom-0 border-l border-neutral-800/20 pointer-events-none"
+                          style={{ left: `${((time - timeRange.start) / timeRange.duration) * 100}%` }}
+                        />
+                      ))}
 
-                    // Calculate vertical position based on lane - centered in available space
-                    const baseOffset = laneCount === 1 ? (compactRowHeight - laneHeight) / 2 : (expandedRowHeight - laneHeight) / 2
-                    const laneTopOffset = laneIndex * (laneHeight + laneGap) + baseOffset
+                      {activities.map(activity => {
+                        const { duration, ...style } = getActivityStyle(activity)
+                        const laneIndex = laneMap.get(activity.sessionId) || 0
+                        const isHovered = hoveredActivity?.sessionId === activity.sessionId
+                        const isInChain = hoveredChain.has(activity.sessionId)
+                        const activityType = getActivityType(activity)
+                        const typeColors = getActivityTypeColor(activityType)
+                        const TypeIcon = TYPE_ICONS[activityType]
 
-                    return (
-                      <div
-                        key={activity.sessionId}
-                        className={`
-                          absolute rounded cursor-pointer overflow-hidden
-                          transition-all duration-200 border
-                          ${isHovered ? 'z-10 ring-2 ring-white/20 scale-105' : 'z-0'}
-                          ${isInChain && !isHovered ? 'z-5 ring-1 ring-white/10' : ''}
-                        `}
-                        style={{
-                          ...style,
-                          top: `${laneTopOffset}px`,
-                          height: `${laneHeight}px`,
-                          backgroundColor: activity.status === 'active'
-                            ? typeColors.bg.replace('0.2', '0.4')
-                            : activity.status === 'aborted'
-                              ? 'rgba(239, 68, 68, 0.2)'
-                              : typeColors.bg,
-                          borderColor: isInChain || isHovered
-                            ? '#ffffff'
-                            : activity.status === 'active'
-                              ? typeColors.text
-                              : activity.status === 'aborted'
-                                ? '#ef4444'
-                                : typeColors.border,
-                          borderWidth: isInChain || isHovered ? '2px' : '1px',
-                        }}
-                        onMouseEnter={() => onHover(activity)}
-                        onMouseLeave={() => onHover(null)}
-                        onClick={() => onSelect(activity)}
-                      >
-                        <div className="absolute inset-0 flex items-center px-1.5 gap-1 overflow-hidden min-w-0">
-                          {activity.status === 'active' && (
-                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-                          )}
-                          <TypeIcon className="w-3 h-3 shrink-0" color={typeColors.text} />
-                          {parseFloat(style.width) > 3 && (
-                            <span className="text-[10px] text-neutral-200 overflow-hidden text-ellipsis whitespace-nowrap min-w-0">
-                              {activity.label}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
+                        const baseOffset = laneCount === 1 ? (compactRowHeight - laneHeight) / 2 : (expandedRowHeight - laneHeight) / 2
+                        const laneTopOffset = laneIndex * (laneHeight + laneGap) + baseOffset
+
+                        return (
+                          <div
+                            key={activity.sessionId}
+                            className={`
+                              absolute rounded cursor-pointer overflow-hidden
+                              transition-all duration-200 border
+                              ${isHovered ? 'z-10 ring-2 ring-white/20 scale-105' : 'z-0'}
+                              ${isInChain && !isHovered ? 'z-5 ring-1 ring-white/10' : ''}
+                            `}
+                            style={{
+                              ...style,
+                              top: `${laneTopOffset}px`,
+                              height: `${laneHeight}px`,
+                              backgroundColor: activity.status === 'active'
+                                ? typeColors.bg.replace('0.2', '0.4')
+                                : activity.status === 'aborted'
+                                  ? 'rgba(239, 68, 68, 0.2)'
+                                  : typeColors.bg,
+                              borderColor: isInChain || isHovered
+                                ? '#ffffff'
+                                : activity.status === 'active'
+                                  ? typeColors.text
+                                  : activity.status === 'aborted'
+                                    ? '#ef4444'
+                                    : typeColors.border,
+                              borderWidth: isInChain || isHovered ? '2px' : '1px',
+                            }}
+                            onMouseEnter={() => onHover(activity)}
+                            onMouseLeave={() => onHover(null)}
+                            onClick={() => onSelect(activity)}
+                          >
+                            <div className="absolute inset-0 flex items-center px-1.5 gap-1 overflow-hidden min-w-0">
+                              {activity.status === 'active' && (
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                              )}
+                              <TypeIcon className="w-3 h-3 shrink-0" color={typeColors.text} />
+                              {parseFloat(style.width) > 3 && (
+                                <span className="text-[10px] text-neutral-200 overflow-hidden text-ellipsis whitespace-nowrap min-w-0">
+                                  {activity.label}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
-            )
-          })}
+          )}
         </div>
 
         {/* Parent-child connection lines */}
