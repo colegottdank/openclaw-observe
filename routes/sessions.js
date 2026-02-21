@@ -5,6 +5,7 @@ import path from 'path'
 import { createInterface } from 'readline'
 import { AGENTS_ROOT } from '../lib/paths.js'
 import { createCache } from '../lib/cache.js'
+import { findSessionFile } from '../lib/sessions-util.js'
 
 const router = Router()
 const sessionCache = createCache(5000)
@@ -158,18 +159,9 @@ router.get('/api/sessions/:agentId/:sessionId', async (req, res) => {
   }
 
   // Try primary .jsonl first, then fall back to archived .jsonl.deleted.* files
-  let sessionPath = path.join(sessionsDir, `${sessionId}.jsonl`)
-  try {
-    await fs.stat(sessionPath)
-  } catch {
-    // Primary file not found — scan for archived version
-    try {
-      const files = await fs.readdir(sessionsDir)
-      const archived = files.find(f => f.startsWith(`${sessionId}.jsonl.deleted.`))
-      if (archived) {
-        sessionPath = path.join(sessionsDir, archived)
-      }
-    } catch {}
+  const sessionPath = await findSessionFile(sessionsDir, sessionId)
+  if (!sessionPath) {
+    return res.status(404).json({ error: 'Session log not found' })
   }
 
   try {

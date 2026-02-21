@@ -6,8 +6,12 @@ import path from 'path'
 import os from 'os'
 import { spawn } from 'child_process'
 import { ROOT_DIR, AGENTS_ROOT } from '../lib/paths.js'
+import { findSessionFile } from '../lib/sessions-util.js'
 
 const router = Router()
+
+// Matches timestamp prefixes injected by the gateway, e.g. "[Fri 2026-02-20 15:09 PST] "
+const TIMESTAMP_PREFIX_RE = /^\[.*?\]\s*/
 
 // --- Mock data for testing (dev only) ---
 let mockActivities = []
@@ -67,7 +71,8 @@ async function readSessionMeta(filePath) {
       }
     }
 
-    // Read last line efficiently via tail for real end time
+    // Use `tail -1` to read only the last line from disk — avoids reading the entire
+    // file into memory, which matters for large session logs (can be 10s of MB).
     const lastActivityAt = await new Promise((resolve) => {
       const tail = spawn('tail', ['-1', filePath])
       let output = ''
@@ -84,8 +89,7 @@ async function readSessionMeta(filePath) {
     // Derive a short label from the first user message
     let taskLabel = null
     if (firstUserMessage) {
-      // Strip timestamp prefix like "[Fri 2026-02-20 15:09 PST] "
-      let text = firstUserMessage.replace(/^\[.*?\]\s*/, '').trim()
+      let text = firstUserMessage.replace(TIMESTAMP_PREFIX_RE, '').trim()
       taskLabel = text.slice(0, 60) + (text.length > 60 ? '...' : '')
     }
 
@@ -131,7 +135,7 @@ router.get('/api/gateway/logs', async (req, res) => {
 
 /** Read subagent runs registry for parent-child relationships */
 async function readRunsRegistry() {
-  const childToParent = new Map() // childSessionKey → requesterSessionKey
+  const childToParent = new Map() // childSessionKey -> requesterSessionKey
   try {
     const runsPath = path.join(ROOT_DIR, 'subagents', 'runs.json')
     const data = JSON.parse(await fs.readFile(runsPath, 'utf-8'))
@@ -169,8 +173,167 @@ async function readSpawnCalls(filePath) {
         }
       } catch {}
     }
+    // Ensure the underlying file descriptor is released after reading all lines
+    stream.destroy()
   } catch {}
   return spawns
+}
+
+/**
+ * Phase 1: Collect activities from sessions.json for a single agent.
+ * Reads the sessions registry and creates activity entries for sessions
+ * that fall within or near the time window.
+ *
+ * @returns {{ knownSessionIds: Set<string> }} IDs already accounted for
+ */
+function collectSessionsJsonActivities(agent, sessionsDir, sessions, now, windowStart, activities, parentLookups, keyToSessionId) {
+  const knownSessionIds = new Set()
+
+  Object.entries(sessions).forEach(([key, session]) => {
+    const end = session.updatedAt
+    // Register key -> sessionId mapping for all sessions (needed for parent resolution)
+    if (session.sessionId) {
+      keyToSessionId.set(key, session.sessionId)
+      knownSessionIds.add(session.sessionId)
+    }
+    // Be generous here -- real start comes from JSONL, post-filter handles overlap
+    if (end >= windowStart || session.active) {
+      let label = session.label || 'Unknown task'
+      if (label === 'Unknown task' && key.includes(':')) {
+        label = key.split(':').slice(2).join(':').replace(/^(discord|channel):?/, '')
+      }
+      // Truncate long channel IDs to last 4 digits
+      label = label.replace(/\b(\d{8,})\b/g, (m) => `#${m.slice(-4)}`)
+      let status = 'completed'
+      if (session.active || (now - end) < 60000) status = 'active'
+      else if (session.abortedLastRun) status = 'aborted'
+      // start will be filled in from JSONL metadata; fallback to updatedAt - 60s
+      const activity = { agentId: agent, sessionId: session.sessionId, start: end - 60000, end, label, status, key, parentSessionId: null, _spawnedBy: session.spawnedBy || null }
+      activities.push(activity)
+
+      // Read session metadata from JSONL (createdAt)
+      if (session.sessionId) {
+        const jsonlPath = path.join(sessionsDir, `${session.sessionId}.jsonl`)
+        parentLookups.push(
+          readSessionMeta(jsonlPath).then(meta => {
+            if (meta.parentSessionId) {
+              activity.parentSessionId = meta.parentSessionId
+            }
+            if (meta.createdAt) {
+              activity.start = meta.createdAt
+            }
+            // Use last JSONL timestamp as real end time (sessions.json updatedAt is unreliable for cron jobs)
+            if (meta.lastActivityAt && meta.lastActivityAt > activity.end) {
+              activity.end = meta.lastActivityAt
+            }
+            // Re-evaluate status with corrected end time
+            if (!session.active && activity.status !== 'aborted') {
+              activity.status = (now - activity.end) < 60000 ? 'active' : 'completed'
+            }
+          })
+        )
+      }
+    }
+  })
+
+  return knownSessionIds
+}
+
+/**
+ * Phase 2: Discover archived sessions from `.jsonl.deleted.*` files for a single agent.
+ * Skips any sessionId already seen in Phase 1.
+ */
+function collectArchivedActivities(agent, sessionsDir, files, knownSessionIds, activities, parentLookups) {
+  const archivedFiles = files.filter(f => f.includes('.jsonl.deleted.'))
+  for (const file of archivedFiles) {
+    // Extract session ID: "abc123.jsonl.deleted.2026-..." -> "abc123"
+    const sessionId = file.split('.jsonl.')[0]
+    if (!sessionId || knownSessionIds.has(sessionId)) continue
+
+    const filePath = path.join(sessionsDir, file)
+    knownSessionIds.add(sessionId)
+
+    const activity = { agentId: agent, sessionId, start: 0, end: 0, label: 'Archived session', status: 'completed', key: `agent:${agent}:${sessionId}`, parentSessionId: null, _archived: true }
+    activities.push(activity)
+
+    parentLookups.push(
+      readSessionMeta(filePath).then(meta => {
+        if (meta.parentSessionId) {
+          activity.parentSessionId = meta.parentSessionId
+        }
+        if (meta.createdAt) {
+          activity.start = meta.createdAt
+        }
+        if (meta.lastActivityAt) {
+          activity.end = meta.lastActivityAt
+        }
+        if (meta.taskLabel) {
+          activity.label = meta.taskLabel
+        }
+        // If we couldn't get times, skip this activity (will be filtered out)
+        if (!activity.start && !activity.end) {
+          activity._skip = true
+        }
+      })
+    )
+  }
+}
+
+/**
+ * Phase 3: For activities still missing parentSessionId, scan potential parent
+ * JONLs for `sessions_spawn` tool calls and match by agentId + timestamp proximity.
+ */
+async function resolveParentsViaSpawnScan(activities) {
+  const unresolved = activities.filter(a => !a.parentSessionId && a.start)
+  if (unresolved.length === 0) return
+
+  // Scan all non-archived activities for spawn calls (potential parents)
+  const potentialParents = activities.filter(a => !a._archived && a.sessionId)
+  const spawnScanPromises = potentialParents.map(async (parent) => {
+    const sessionsDir = path.join(AGENTS_ROOT, parent.agentId, 'sessions')
+    const jsonlPath = await findSessionFile(sessionsDir, parent.sessionId)
+    if (!jsonlPath) return
+
+    const spawns = await readSpawnCalls(jsonlPath)
+    for (const spawnCall of spawns) {
+      // Find the unresolved child: match by agentId + timestamp within 5s
+      for (const child of unresolved) {
+        if (child.parentSessionId) continue
+        if (child.agentId !== spawnCall.agentId) continue
+        if (Math.abs(child.start - spawnCall.spawnTimestamp) < 5000) {
+          child.parentSessionId = parent.sessionId
+        }
+      }
+    }
+  })
+  await Promise.all(spawnScanPromises)
+}
+
+/**
+ * Deduplicate activities by sessionId.
+ * Cron jobs can create both a schedule entry and a run entry for the same session.
+ * Prefers non-archived entries and entries with meaningful labels.
+ */
+function deduplicateActivities(activities) {
+  const seen = new Map()
+  for (const a of activities) {
+    if (a._skip) continue
+    if (!a.sessionId) continue
+    const existing = seen.get(a.sessionId)
+    // Prefer non-archived entries; among same type prefer ones with real labels
+    if (!existing || (!a._archived && existing._archived) || a.label !== 'Unknown task') {
+      seen.set(a.sessionId, a)
+    }
+  }
+  const deduped = Array.from(seen.values())
+
+  // Clean up internal fields
+  for (const a of deduped) {
+    delete a._skip
+    delete a._archived
+  }
+
+  return deduped
 }
 
 router.get('/api/swarm/activity', async (req, res) => {
@@ -184,117 +347,42 @@ router.get('/api/swarm/activity', async (req, res) => {
     // Read subagent runs registry for parent-child links
     const childToParentKey = await readRunsRegistry()
 
-    // Collect activities from all agents
     const parentLookups = []
-    // Track session key → sessionId for resolving parent references
+    // Track session key -> sessionId for resolving parent references
     const keyToSessionId = new Map()
 
+    // Collect activities from all agents (Phase 1 + Phase 2)
     await Promise.all(agents.map(async (agent) => {
       if (agent.startsWith('.')) return
       const sessionsDir = path.join(AGENTS_ROOT, agent, 'sessions')
       const sessionsFile = path.join(sessionsDir, 'sessions.json')
-      const knownSessionIds = new Set()
+      let knownSessionIds = new Set()
 
       // Phase 1: Read active sessions from sessions.json
       try {
         const data = await fs.readFile(sessionsFile, 'utf-8')
         const sessions = JSON.parse(data)
-        Object.entries(sessions).forEach(([key, session]) => {
-          const end = session.updatedAt
-          // Register key → sessionId mapping for all sessions (needed for parent resolution)
-          if (session.sessionId) {
-            keyToSessionId.set(key, session.sessionId)
-            knownSessionIds.add(session.sessionId)
-          }
-          // Be generous here — real start comes from JSONL, post-filter handles overlap
-          if (end >= windowStart || session.active) {
-            let label = session.label || 'Unknown task'
-            if (label === 'Unknown task' && key.includes(':')) {
-              label = key.split(':').slice(2).join(':').replace(/^(discord|channel):?/, '')
-            }
-            // Truncate long channel IDs to last 4 digits
-            label = label.replace(/\b(\d{8,})\b/g, (m) => `#${m.slice(-4)}`)
-            let status = 'completed'
-            if (session.active || (now - end) < 60000) status = 'active'
-            else if (session.abortedLastRun) status = 'aborted'
-            // start will be filled in from JSONL metadata; fallback to updatedAt - 60s
-            const activity = { agentId: agent, sessionId: session.sessionId, start: end - 60000, end, label, status, key, parentSessionId: null, _spawnedBy: session.spawnedBy || null }
-            activities.push(activity)
-
-            // Read session metadata from JSONL (createdAt)
-            if (session.sessionId) {
-              const jsonlPath = path.join(sessionsDir, `${session.sessionId}.jsonl`)
-              parentLookups.push(
-                readSessionMeta(jsonlPath).then(meta => {
-                  if (meta.parentSessionId) {
-                    activity.parentSessionId = meta.parentSessionId
-                  }
-                  if (meta.createdAt) {
-                    activity.start = meta.createdAt
-                  }
-                  // Use last JSONL timestamp as real end time (sessions.json updatedAt is unreliable for cron jobs)
-                  if (meta.lastActivityAt && meta.lastActivityAt > activity.end) {
-                    activity.end = meta.lastActivityAt
-                  }
-                  // Re-evaluate status with corrected end time
-                  if (!session.active && activity.status !== 'aborted') {
-                    activity.status = (now - activity.end) < 60000 ? 'active' : 'completed'
-                  }
-                })
-              )
-            }
-          }
-        })
+        knownSessionIds = collectSessionsJsonActivities(
+          agent, sessionsDir, sessions, now, windowStart,
+          activities, parentLookups, keyToSessionId
+        )
       } catch {}
 
       // Phase 2: Discover archived sessions from .deleted JSONL files
       try {
         const files = await fs.readdir(sessionsDir)
-        const archivedFiles = files.filter(f => f.includes('.jsonl.deleted.'))
-        for (const file of archivedFiles) {
-          // Extract session ID: "abc123.jsonl.deleted.2026-..." → "abc123"
-          const sessionId = file.split('.jsonl.')[0]
-          if (!sessionId || knownSessionIds.has(sessionId)) continue
-
-          const filePath = path.join(sessionsDir, file)
-          knownSessionIds.add(sessionId)
-
-          // Derive a label from the session key or use a fallback
-          const activity = { agentId: agent, sessionId, start: 0, end: 0, label: 'Archived session', status: 'completed', key: `agent:${agent}:${sessionId}`, parentSessionId: null, _archived: true }
-          activities.push(activity)
-
-          parentLookups.push(
-            readSessionMeta(filePath).then(meta => {
-              if (meta.parentSessionId) {
-                activity.parentSessionId = meta.parentSessionId
-              }
-              if (meta.createdAt) {
-                activity.start = meta.createdAt
-              }
-              if (meta.lastActivityAt) {
-                activity.end = meta.lastActivityAt
-              }
-              if (meta.taskLabel) {
-                activity.label = meta.taskLabel
-              }
-              // If we couldn't get times, skip this activity (will be filtered out)
-              if (!activity.start && !activity.end) {
-                activity._skip = true
-              }
-            })
-          )
-        }
+        collectArchivedActivities(agent, sessionsDir, files, knownSessionIds, activities, parentLookups)
       } catch {}
     }))
 
-    // Resolve parent session IDs in parallel
+    // Resolve JSONL metadata in parallel
     await Promise.all(parentLookups)
 
     // Resolve parent-child relationships from runs registry and spawnedBy
     for (const activity of activities) {
       if (activity.parentSessionId) continue // already resolved from JSONL
 
-      // Try runs.json first: childSessionKey → requesterSessionKey → sessionId
+      // Try runs.json first: childSessionKey -> requesterSessionKey -> sessionId
       const parentKey = childToParentKey.get(activity.key) || activity._spawnedBy
       if (parentKey) {
         const parentSessionId = keyToSessionId.get(parentKey)
@@ -305,57 +393,11 @@ router.get('/api/swarm/activity', async (req, res) => {
       delete activity._spawnedBy
     }
 
-    // Phase 3: For activities still missing parentSessionId, scan parent JONLs
-    // for sessions_spawn tool calls and match by agentId + timestamp proximity
-    const unresolved = activities.filter(a => !a.parentSessionId && a.start)
-    if (unresolved.length > 0) {
-      // Scan all non-child activities for spawn calls (potential parents)
-      const potentialParents = activities.filter(a => !a._archived && a.sessionId)
-      const spawnScanPromises = potentialParents.map(async (parent) => {
-        const sessionsDir = path.join(AGENTS_ROOT, parent.agentId, 'sessions')
-        // Try active .jsonl first, then archived
-        let jsonlPath = path.join(sessionsDir, `${parent.sessionId}.jsonl`)
-        try { await fs.access(jsonlPath) } catch {
-          try {
-            const files = await fs.readdir(sessionsDir)
-            const archived = files.find(f => f.startsWith(`${parent.sessionId}.jsonl.deleted.`))
-            if (archived) jsonlPath = path.join(sessionsDir, archived)
-            else return
-          } catch { return }
-        }
-        const spawns = await readSpawnCalls(jsonlPath)
-        for (const spawn of spawns) {
-          // Find the unresolved child: match by agentId + timestamp within 5s
-          for (const child of unresolved) {
-            if (child.parentSessionId) continue
-            if (child.agentId !== spawn.agentId) continue
-            if (Math.abs(child.start - spawn.spawnTimestamp) < 5000) {
-              child.parentSessionId = parent.sessionId
-            }
-          }
-        }
-      })
-      await Promise.all(spawnScanPromises)
-    }
+    // Phase 3: Resolve remaining parent-child links via spawn call timestamp matching
+    await resolveParentsViaSpawnScan(activities)
 
-    // Deduplicate by sessionId (cron jobs create both a schedule entry and a run entry)
-    const seen = new Map()
-    for (const a of activities) {
-      if (a._skip) continue
-      if (!a.sessionId) continue
-      const existing = seen.get(a.sessionId)
-      // Prefer non-archived entries; among same type prefer ones with real labels
-      if (!existing || (!a._archived && existing._archived) || a.label !== 'Unknown task') {
-        seen.set(a.sessionId, a)
-      }
-    }
-    const deduped = Array.from(seen.values())
-
-    // Clean up internal fields
-    for (const a of deduped) {
-      delete a._skip
-      delete a._archived
-    }
+    // Deduplicate and clean up
+    const deduped = deduplicateActivities(activities)
 
     // Filter: keep activities that overlap with the time window (now that we have real start times)
     const filtered = deduped.filter(a => a.end >= windowStart && a.start <= now)
