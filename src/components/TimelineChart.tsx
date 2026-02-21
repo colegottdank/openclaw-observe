@@ -338,7 +338,7 @@ export function TimelineChart({
               return (
                 <div key={group.name} className={`relative ${groupIndex > 0 ? 'mt-2' : ''}`}>
                   {/* Group container with enhanced styling */}
-                  <div className={`relative rounded-xl overflow-hidden border ${borderColor}`}>
+                  <div className={`relative overflow-hidden border ${borderColor}`}>
                     {/* Left accent border */}
                     <div className={`absolute left-0 top-0 bottom-0 w-0.5 ${leftBorder}`} />
                     

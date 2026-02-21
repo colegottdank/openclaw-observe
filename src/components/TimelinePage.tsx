@@ -54,17 +54,19 @@ export function TimelinePage() {
     for (const swarm of swarms) {
       const startIndex = ordered.length
       const ids = [swarm.leader.id, ...swarm.members.map(m => m.id)]
-      ids.forEach(id => { ordered.push(id); seen.add(id) })
-      groups.push({ name: swarm.name, startIndex, count: ids.length })
+      ids.forEach(id => { if (!seen.has(id)) { ordered.push(id) } seen.add(id) })
+      const count = ordered.length - startIndex
+      if (count > 0) groups.push({ name: swarm.name, startIndex, count })
     }
 
     // Standalone agents
     const standaloneIds = standalone.map(a => a.id)
     if (standaloneIds.length > 0) {
       const startIndex = ordered.length
-      standaloneIds.forEach(id => { ordered.push(id); seen.add(id) })
-      if (swarms.length > 0) {
-        groups.push({ name: 'Standalone', startIndex, count: standaloneIds.length })
+      standaloneIds.forEach(id => { if (!seen.has(id)) { ordered.push(id) } seen.add(id) })
+      const count = ordered.length - startIndex
+      if (count > 0 && swarms.length > 0) {
+        groups.push({ name: 'Standalone', startIndex, count })
       }
     }
 
