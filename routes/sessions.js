@@ -152,10 +152,26 @@ router.get('/api/sessions/:agentId/:sessionId', async (req, res) => {
     return res.type('text/plain').send(jsonl)
   }
 
-  const sessionPath = path.resolve(AGENTS_ROOT, agentId, 'sessions', `${sessionId}.jsonl`)
-  if (!sessionPath.startsWith(path.resolve(AGENTS_ROOT))) {
+  const sessionsDir = path.resolve(AGENTS_ROOT, agentId, 'sessions')
+  if (!sessionsDir.startsWith(path.resolve(AGENTS_ROOT))) {
     return res.status(403).json({ error: 'Access denied' })
   }
+
+  // Try primary .jsonl first, then fall back to archived .jsonl.deleted.* files
+  let sessionPath = path.join(sessionsDir, `${sessionId}.jsonl`)
+  try {
+    await fs.stat(sessionPath)
+  } catch {
+    // Primary file not found — scan for archived version
+    try {
+      const files = await fs.readdir(sessionsDir)
+      const archived = files.find(f => f.startsWith(`${sessionId}.jsonl.deleted.`))
+      if (archived) {
+        sessionPath = path.join(sessionsDir, archived)
+      }
+    } catch {}
+  }
+
   try {
     const stat = await fs.stat(sessionPath)
     const lastModified = stat.mtime.toUTCString()
